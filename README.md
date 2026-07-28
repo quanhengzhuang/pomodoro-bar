@@ -42,7 +42,7 @@ dist/PomodoroBar.app
     "endedAt" : "2026-07-28 16:14:45",
     "durationMinutes" : 25,
     "type" : "focus",
-    "note" : "二专"
+    "note" : "写周报"
   }
 ]
 ```
