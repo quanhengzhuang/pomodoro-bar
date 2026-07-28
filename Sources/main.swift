@@ -143,6 +143,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private var sessionPlannedDurationSeconds: Int?
     private var sessionNote = ""
     private var records: [PomodoroRecord] = []
+    private var areTodayRecordsExpanded = false
     private var focusDurationMinutes = 25
     private let recordsStorageKey = "pomodoro.records"
     private let focusDurationStorageKey = "pomodoro.focusDurationMinutes"
@@ -152,6 +153,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     private let shortBreakDurationSeconds = 5 * 60
     private let longBreakDurationSeconds = 15 * 60
+    private let collapsedRecordsLimit = 5
 
     private lazy var statusMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private lazy var startPauseMenuItem = NSMenuItem(
@@ -446,7 +448,12 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             emptyItem.isEnabled = false
             menu.addItem(emptyItem)
         } else {
-            for record in todayRecords.reversed() {
+            let reversedRecords = Array(todayRecords.reversed())
+            let visibleRecords = areTodayRecordsExpanded
+                ? reversedRecords
+                : Array(reversedRecords.prefix(collapsedRecordsLimit))
+
+            for record in visibleRecords {
                 let noteSuffix = record.note.isEmpty ? "" : " · \(record.note)"
                 let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
                 item.attributedTitle = recordMenuTitle(
@@ -455,6 +462,13 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
                 )
                 item.isEnabled = false
                 menu.addItem(item)
+            }
+
+            if todayRecords.count > collapsedRecordsLimit {
+                let title = areTodayRecordsExpanded ? "收起记录" : "展开全部记录（共 \(todayRecords.count) 条）"
+                let toggleItem = NSMenuItem(title: title, action: #selector(toggleTodayRecordsExpanded), keyEquivalent: "")
+                toggleItem.target = self
+                menu.addItem(toggleItem)
             }
         }
 
@@ -785,6 +799,11 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             }
             rebuildMenu()
         }
+    }
+
+    @objc private func toggleTodayRecordsExpanded() {
+        areTodayRecordsExpanded.toggle()
+        rebuildMenu()
     }
 
     @objc private func selectFocus() {
