@@ -451,7 +451,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
                 let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
                 item.attributedTitle = recordMenuTitle(
                     dotColor: record.menuDotColor,
-                    text: "\(menuTimeText(record.endedAt)) · \(record.displayTitle) · \(record.durationMinutes) 分钟\(noteSuffix)"
+                    text: "\(menuTimeRangeText(record)) · \(record.displayTitle) · \(recordDurationMinutes(record)) 分钟\(noteSuffix)"
                 )
                 item.isEnabled = false
                 menu.addItem(item)
@@ -489,6 +489,21 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     private func menuTimeText(_ dateTime: String) -> String {
         String(dateTime.prefix(16))
+    }
+
+    private func menuTimeRangeText(_ record: PomodoroRecord) -> String {
+        let startedAt = menuTimeText(record.startedAt)
+        let endedAt = menuTimeText(record.endedAt)
+        let endTime = endedAt.count >= 16 ? String(endedAt.suffix(5)) : endedAt
+        return "\(startedAt)-\(endTime)"
+    }
+
+    private func recordDurationMinutes(_ record: PomodoroRecord) -> Int {
+        guard let startedAt = recordDateTimeFormatter.date(from: record.startedAt),
+              let endedAt = recordDateTimeFormatter.date(from: record.endedAt) else {
+            return record.durationMinutes
+        }
+        return max(0, Int(endedAt.timeIntervalSince(startedAt) / 60))
     }
 
     private func addPomodoroRecord(mode completedMode: PomodoroMode) {

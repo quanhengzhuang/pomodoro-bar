@@ -1,74 +1,23 @@
 # AGENTS.md
 
-This file defines repository-specific instructions for AI coding agents working on Pomodoro Bar.
+## 开发流程
 
-## Development Workflow
+- 非平凡改动先写 task，再等用户确认后编码。
+- task 放在 `docs/tasks/YYYY-MM-DD-xxxxxx.md`。
+- task 保持极简，固定包含：目标、改动、影响文件、预估代码行数。
+- 只在确实涉及数据、兼容、风险或验证重点时额外补充说明。
+- 实现后简单补充实际变更和验证结果。
+- 小修复可跳过 task，但要说明原因。
 
-For every non-trivial implementation request, behavior change, refactor, or data-format change:
+## 数据兼容
 
-1. Create a task document before coding.
-2. Put task documents under `docs/tasks/`.
-3. Name task documents with this format:
+- 记录文件：`~/.pomodoro-status-bar/records.json`。
+- 涉及记录格式、路径、时长语义、清空或迁移时，必须兼容旧数据。
+- 不删除用户数据；破坏性操作前先备份。
+- JSON 保持可读。
 
-   ```text
-   docs/tasks/YYYY-MM-DD-xxxxxx.md
-   ```
+## 构建与提交
 
-   Example:
-
-   ```text
-   docs/tasks/2026-06-06-custom-focus-duration.md
-   ```
-
-4. The task document must include:
-   - Goal
-   - Background
-   - Scope
-   - Non-goals
-   - Data compatibility considerations
-   - Implementation plan
-   - Acceptance criteria
-   - Verification plan
-5. Stop after writing the task document and ask the user to confirm it.
-6. Do not start coding until the user confirms the task document is correct.
-7. After implementation, update the task document with:
-   - What changed
-   - Verification performed
-   - Any known limitations or follow-up work
-
-Small, obvious fixes that do not change behavior or data may be implemented directly, but mention that the task-document step was skipped because the change is trivial.
-
-## Data Compatibility
-
-Pomodoro Bar stores user records at:
-
-```text
-~/.pomodoro-status-bar/records.json
-```
-
-Any change to record format, storage path, duration semantics, clearing behavior, or migration behavior must preserve compatibility with existing user data.
-
-When changing data behavior:
-
-- Read existing records successfully.
-- Preserve human-readable JSON.
-- Keep existing user records unless the user explicitly requests deletion.
-- Back up user data before destructive operations.
-- Prefer additive migrations over destructive rewrites.
-- If a field is removed or deprecated, document why and preserve safe reading of old records.
-- Verify with representative old and new record examples.
-
-## Build And Generated Files
-
-- Use `./scripts/build.sh` to build the app.
-- Build output goes to `dist/PomodoroBar.app`.
-- Do not commit `dist/` or `.build/`.
-- Keep source in `Sources/`, packaging metadata in `Packaging/`, and reusable static assets in `Resources/` or `docs/assets/`.
-
-## Commit Expectations
-
-Before committing:
-
-- Run `./scripts/build.sh` when source or packaging changes.
-- Check `git status --short --branch`.
-- Keep commits focused and avoid unrelated cleanup.
+- 源码或打包配置变更后运行 `./scripts/build.sh`。
+- 不提交 `dist/` 或 `.build/`。
+- 提交前检查 `git status --short --branch`。
