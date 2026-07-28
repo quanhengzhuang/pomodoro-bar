@@ -1,8 +1,6 @@
-# Pomodoro Bar · 番茄栏
+<img src="docs/assets/icon.png" alt="Pomodoro Bar icon" width="48">
 
-<p align="center">
-  <img src="docs/assets/icon.png" alt="Pomodoro Bar icon" width="48">
-</p>
+# Pomodoro Bar · 番茄栏
 
 一个轻量的 macOS 菜单栏番茄钟。
 
