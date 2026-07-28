@@ -9,7 +9,16 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 MODULE_CACHE="$ROOT_DIR/.build/ModuleCache"
 
-mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$MODULE_CACHE"
+mkdir -p "$ROOT_DIR/dist" "$MODULE_CACHE"
+
+if [[ -d "$APP_DIR" ]]; then
+  BACKUP_SUFFIX="$(date +%Y%m%d-%H%M%S)"
+  BACKUP_DIR="$APP_DIR.$BACKUP_SUFFIX"
+  cp -R "$APP_DIR" "$BACKUP_DIR"
+  echo "Backed up $APP_DIR to $BACKUP_DIR"
+fi
+
+mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 
 swiftc \
   -module-cache-path "$MODULE_CACHE" \
