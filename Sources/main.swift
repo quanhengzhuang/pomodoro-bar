@@ -140,18 +140,18 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private var focusSessions = 0
     private var remainingSeconds = 25 * 60
     private var sessionStartedAt: Date?
+    private var sessionPlannedDurationSeconds: Int?
     private var sessionNote = ""
     private var records: [PomodoroRecord] = []
+    private var focusDurationMinutes = 25
     private let recordsStorageKey = "pomodoro.records"
+    private let focusDurationStorageKey = "pomodoro.focusDurationMinutes"
     private let recordsDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".pomodoro-status-bar", isDirectory: true)
     private let recordsFileName = "records.json"
 
-    private let durations: [PomodoroMode: Int] = [
-        .focus: 25 * 60,
-        .shortBreak: 5 * 60,
-        .longBreak: 15 * 60
-    ]
+    private let shortBreakDurationSeconds = 5 * 60
+    private let longBreakDurationSeconds = 15 * 60
 
     private lazy var statusMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private lazy var startPauseMenuItem = NSMenuItem(
@@ -165,7 +165,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
         configureNotifications()
+        loadPreferences()
         loadRecords()
+        remainingSeconds = duration(for: .focus)
         configureStatusItem()
         rebuildMenu()
         updateStatusTitle()
@@ -207,7 +209,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         menu.addItem(.separator())
 
-        let focusItem = NSMenuItem(title: "专注 25 分钟", action: #selector(selectFocus), keyEquivalent: "1")
+        let focusItem = NSMenuItem(title: "专注 \(focusDurationMinutes) 分钟", action: #selector(selectFocus), keyEquivalent: "1")
         focusItem.target = self
         focusItem.state = mode == .focus ? .on : .off
         menu.addItem(focusItem)
@@ -221,6 +223,10 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         longBreakItem.target = self
         longBreakItem.state = mode == .longBreak ? .on : .off
         menu.addItem(longBreakItem)
+
+        let focusDurationItem = NSMenuItem(title: "设置专注时长...", action: #selector(editFocusDuration), keyEquivalent: "")
+        focusDurationItem.target = self
+        menu.addItem(focusDurationItem)
 
         menu.addItem(.separator())
 
@@ -240,6 +246,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         hasActiveSession = true
         if sessionStartedAt == nil {
             sessionStartedAt = Date()
+            sessionPlannedDurationSeconds = duration(for: mode)
         }
         timer?.invalidate()
         timer = Timer.scheduledTimer(
@@ -266,6 +273,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         isRunning = false
         hasActiveSession = false
         sessionStartedAt = nil
+        sessionPlannedDurationSeconds = nil
         sessionNote = ""
         timer?.invalidate()
         timer = nil
@@ -275,7 +283,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     private func setMode(_ nextMode: PomodoroMode) {
         mode = nextMode
-        remainingSeconds = durations[nextMode] ?? 25 * 60
+        remainingSeconds = duration(for: nextMode)
         stopTimer()
     }
 
@@ -301,9 +309,20 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         NSSound(named: "Glass")?.play()
         mode = nextMode
-        remainingSeconds = durations[nextMode] ?? 25 * 60
+        remainingSeconds = duration(for: nextMode)
         stopTimer()
         showCompletionNotification(completedMode: completedMode, nextMode: nextMode)
+    }
+
+    private func duration(for mode: PomodoroMode) -> Int {
+        switch mode {
+        case .focus:
+            return focusDurationMinutes * 60
+        case .shortBreak:
+            return shortBreakDurationSeconds
+        case .longBreak:
+            return longBreakDurationSeconds
+        }
     }
 
     private func showCompletionNotification(completedMode: PomodoroMode, nextMode: PomodoroMode) {
@@ -473,9 +492,10 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     private func addPomodoroRecord(mode completedMode: PomodoroMode) {
-        let startedAt = sessionStartedAt ?? Date().addingTimeInterval(-TimeInterval(durations[completedMode] ?? 0))
+        let plannedDurationSeconds = sessionPlannedDurationSeconds ?? duration(for: completedMode)
+        let startedAt = sessionStartedAt ?? Date().addingTimeInterval(-TimeInterval(plannedDurationSeconds))
         let endedAt = Date()
-        let durationMinutes = (durations[completedMode] ?? 25 * 60) / 60
+        let durationMinutes = plannedDurationSeconds / 60
         records.append(PomodoroRecord(
             startedAt: recordDateTimeFormatter.string(from: startedAt),
             endedAt: recordDateTimeFormatter.string(from: endedAt),
@@ -495,6 +515,17 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
 
         migrateRecordsFromUserDefaults()
+    }
+
+    private func loadPreferences() {
+        let storedFocusDuration = UserDefaults.standard.integer(forKey: focusDurationStorageKey)
+        if storedFocusDuration > 0 {
+            focusDurationMinutes = min(180, max(1, storedFocusDuration))
+        }
+    }
+
+    private func savePreferences() {
+        UserDefaults.standard.set(focusDurationMinutes, forKey: focusDurationStorageKey)
     }
 
     private func saveRecords() {
@@ -588,7 +619,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
                 firstStart = sessionStartedAt
             }
 
-            let currentSessionDuration = durations[mode] ?? 25 * 60
+            let currentSessionDuration = sessionPlannedDurationSeconds ?? duration(for: mode)
             let currentUsedSeconds = max(0, currentSessionDuration - remainingSeconds)
             pomodoroSeconds += currentUsedSeconds
         }
@@ -690,7 +721,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     @objc private func resetTimer() {
-        remainingSeconds = durations[mode] ?? 25 * 60
+        remainingSeconds = duration(for: mode)
         stopTimer()
     }
 
@@ -751,6 +782,45 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     @objc private func selectLongBreak() {
         startMode(.longBreak)
+    }
+
+    @objc private func editFocusDuration() {
+        let alert = NSAlert()
+        alert.messageText = "专注时长"
+        alert.informativeText = "请输入 1 到 180 分钟。新的时长会用于下一段专注。"
+        alert.addButton(withTitle: "保存")
+        alert.addButton(withTitle: "取消")
+
+        let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
+        input.stringValue = "\(focusDurationMinutes)"
+        input.placeholderString = "25"
+        alert.accessoryView = input
+
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            let trimmed = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard let minutes = Int(trimmed), (1...180).contains(minutes) else {
+                showInvalidFocusDurationAlert()
+                return
+            }
+
+            focusDurationMinutes = minutes
+            savePreferences()
+            if mode == .focus && !hasActiveSession {
+                remainingSeconds = duration(for: .focus)
+            }
+            updateStatusTitle()
+            rebuildMenu()
+        }
+    }
+
+    private func showInvalidFocusDurationAlert() {
+        let alert = NSAlert()
+        alert.messageText = "专注时长无效"
+        alert.informativeText = "请输入 1 到 180 之间的整数分钟。"
+        alert.addButton(withTitle: "好")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 
     @objc private func quit() {
