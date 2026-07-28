@@ -1,14 +1,12 @@
-# Pomodoro Bar · 番茄栏
+<img src="docs/assets/icon.png" alt="Pomodoro Bar icon" width="148">
 
-<p align="center">
-  <img src="docs/assets/icon.png" alt="Pomodoro Bar icon" width="48">
-</p>
+# Pomodoro Bar · 菜单栏番茄钟
 
 一个轻量的 macOS 菜单栏番茄钟。
 
 ## 预览
 
-<img src="docs/assets/screenshot-menu.png" alt="Pomodoro Bar 菜单预览" width="30%">
+<img src="docs/assets/screenshot-menu.png" alt="Pomodoro Bar 菜单预览" width="35%">
 
 ## 功能
 
@@ -43,7 +41,7 @@ dist/PomodoroBar.app
     "endedAt" : "2026-07-28 16:14:45",
     "durationMinutes" : 25,
     "type" : "focus",
-    "note" : "二专"
+    "note" : "写周报"
   }
 ]
 ```
