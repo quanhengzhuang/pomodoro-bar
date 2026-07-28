@@ -143,7 +143,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private var sessionPlannedDurationSeconds: Int?
     private var sessionNote = ""
     private var records: [PomodoroRecord] = []
-    private var areTodayRecordsExpanded = false
     private var focusDurationMinutes = 25
     private let recordsStorageKey = "pomodoro.records"
     private let focusDurationStorageKey = "pomodoro.focusDurationMinutes"
@@ -153,7 +152,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     private let shortBreakDurationSeconds = 5 * 60
     private let longBreakDurationSeconds = 15 * 60
-    private let collapsedRecordsLimit = 5
+    private let collapsedRecordsLimit = 10
 
     private lazy var statusMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private lazy var startPauseMenuItem = NSMenuItem(
@@ -449,27 +448,19 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             menu.addItem(emptyItem)
         } else {
             let reversedRecords = Array(todayRecords.reversed())
-            let visibleRecords = areTodayRecordsExpanded
-                ? reversedRecords
-                : Array(reversedRecords.prefix(collapsedRecordsLimit))
+            let recentRecords = Array(reversedRecords.prefix(collapsedRecordsLimit))
 
-            for record in visibleRecords {
-                let noteSuffix = record.note.isEmpty ? "" : " · \(record.note)"
-                let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-                item.attributedTitle = recordMenuTitle(
-                    dotColor: record.menuDotColor,
-                    text: "\(menuTimeRangeText(record)) · \(record.displayTitle) · \(recordDurationMinutes(record)) 分钟\(noteSuffix)"
-                )
-                item.isEnabled = false
-                menu.addItem(item)
+            for record in recentRecords {
+                addRecordMenuItem(record, to: menu)
             }
 
-            if todayRecords.count > collapsedRecordsLimit {
-                let title = areTodayRecordsExpanded ? "收起记录" : "展开全部记录（共 \(todayRecords.count) 条）"
-                let toggleItem = NSMenuItem(title: title, action: #selector(toggleTodayRecordsExpanded), keyEquivalent: "")
-                toggleItem.target = self
-                menu.addItem(toggleItem)
+            let allRecordsItem = NSMenuItem(title: "全部记录（共 \(todayRecords.count) 条）", action: nil, keyEquivalent: "")
+            let submenu = NSMenu()
+            for record in reversedRecords {
+                addRecordMenuItem(record, to: submenu)
             }
+            allRecordsItem.submenu = submenu
+            menu.addItem(allRecordsItem)
         }
 
         let fileItem = NSMenuItem(title: "记录文件：~/.pomodoro-status-bar/records.json", action: nil, keyEquivalent: "")
@@ -491,14 +482,29 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
                 .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
             ]
         ))
+        let recordFont = NSFont(name: "Monaco", size: NSFont.systemFontSize)
+            ?? NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        let textAttributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: NSColor.labelColor,
+            .font: recordFont
+        ]
+
         title.append(NSAttributedString(
             string: text,
-            attributes: [
-                .foregroundColor: NSColor.labelColor,
-                .font: NSFont.menuFont(ofSize: 0)
-            ]
+            attributes: textAttributes
         ))
         return title
+    }
+
+    private func addRecordMenuItem(_ record: PomodoroRecord, to targetMenu: NSMenu) {
+        let noteSuffix = record.note.isEmpty ? "" : " · \(record.note)"
+        let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
+        item.attributedTitle = recordMenuTitle(
+            dotColor: record.menuDotColor,
+            text: "\(menuTimeRangeText(record)) · \(record.displayTitle) · \(recordDurationMinutes(record)) 分钟\(noteSuffix)"
+        )
+        item.isEnabled = false
+        targetMenu.addItem(item)
     }
 
     private func menuTimeText(_ dateTime: String) -> String {
@@ -799,11 +805,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             }
             rebuildMenu()
         }
-    }
-
-    @objc private func toggleTodayRecordsExpanded() {
-        areTodayRecordsExpanded.toggle()
-        rebuildMenu()
     }
 
     @objc private func selectFocus() {
