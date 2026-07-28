@@ -8,7 +8,7 @@
 
 ## 预览
 
-<img src="docs/assets/screenshot-menu.png" alt="Pomodoro Bar 菜单预览" width="30%">
+<img src="docs/assets/screenshot-menu.png" alt="Pomodoro Bar 菜单预览" width="35%">
 
 ## 功能
 
