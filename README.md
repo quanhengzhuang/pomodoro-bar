@@ -6,6 +6,10 @@
 
 一个轻量的 macOS 菜单栏番茄钟。
 
+## 下载
+
+[下载最新版本](https://github.com/quanhengzhuang/pomodoro-bar/releases/latest/download/PomodoroBar.zip)，解压后打开 `PomodoroBar.app` 即可使用。
+
 ## 预览
 
 <img src="docs/assets/screenshot-menu.png" alt="Pomodoro Bar 菜单预览" width="35%">

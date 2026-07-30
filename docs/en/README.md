@@ -6,6 +6,10 @@
 
 A lightweight macOS menu bar Pomodoro timer.
 
+## Download
+
+[Download the latest version](https://github.com/quanhengzhuang/pomodoro-bar/releases/latest/download/PomodoroBar.zip), unzip it, and open `PomodoroBar.app`.
+
 ## Preview
 
 <img src="../assets/screenshot-menu.png" alt="Pomodoro Bar menu preview" width="35%">
