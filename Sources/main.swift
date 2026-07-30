@@ -101,6 +101,8 @@ struct PomodoroRecord: Codable {
             return "专注"
         case "short_break", "long_break":
             return "休息"
+        case "count_up":
+            return "正计时"
         default:
             return type
         }
@@ -135,6 +137,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     private var timer: Timer?
     private var mode: PomodoroMode = .focus
+    private var isCountUp = false
     private var isRunning = false
     private var hasActiveSession = false
     private var focusSessions = 0
@@ -155,10 +158,20 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private let collapsedRecordsLimit = 10
 
     private lazy var statusMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
-    private lazy var startPauseMenuItem = NSMenuItem(
+    private lazy var startMenuItem = NSMenuItem(
         title: "开始",
+        action: #selector(startCountUpTimer),
+        keyEquivalent: " "
+    )
+    private lazy var pauseMenuItem = NSMenuItem(
+        title: "暂停",
         action: #selector(toggleTimer),
         keyEquivalent: " "
+    )
+    private lazy var endMenuItem = NSMenuItem(
+        title: "结束",
+        action: #selector(endCurrentSession),
+        keyEquivalent: ""
     )
     private lazy var tomatoStatusIcon = makeTomatoStatusIcon()
     private lazy var pauseStatusIcon = makePauseStatusIcon()
@@ -209,18 +222,22 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         menu.addItem(statusMenuItem)
         menu.addItem(.separator())
 
-        startPauseMenuItem.target = self
-        startPauseMenuItem.title = isRunning ? "暂停" : "开始"
-        startPauseMenuItem.keyEquivalentModifierMask = []
-        menu.addItem(startPauseMenuItem)
+        startMenuItem.target = self
+        startMenuItem.isEnabled = !hasActiveSession
+        startMenuItem.keyEquivalent = hasActiveSession ? "" : " "
+        startMenuItem.keyEquivalentModifierMask = []
+        menu.addItem(startMenuItem)
 
-        let resetItem = NSMenuItem(title: "重置", action: #selector(resetTimer), keyEquivalent: "r")
-        resetItem.target = self
-        menu.addItem(resetItem)
+        pauseMenuItem.target = self
+        pauseMenuItem.title = hasActiveSession && !isRunning ? "继续" : "暂停"
+        pauseMenuItem.isEnabled = hasActiveSession
+        pauseMenuItem.keyEquivalent = hasActiveSession ? " " : ""
+        pauseMenuItem.keyEquivalentModifierMask = []
+        menu.addItem(pauseMenuItem)
 
-        let skipItem = NSMenuItem(title: "跳到下一段", action: #selector(skipToNextMode), keyEquivalent: "n")
-        skipItem.target = self
-        menu.addItem(skipItem)
+        endMenuItem.target = self
+        endMenuItem.isEnabled = hasActiveSession
+        menu.addItem(endMenuItem)
 
         let noteItem = NSMenuItem(title: sessionNote.isEmpty ? "设置本段备注..." : "修改本段备注...", action: #selector(editSessionNote), keyEquivalent: "e")
         noteItem.target = self
@@ -230,17 +247,17 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         let focusItem = NSMenuItem(title: "专注 \(focusDurationMinutes) 分钟", action: #selector(selectFocus), keyEquivalent: "1")
         focusItem.target = self
-        focusItem.state = mode == .focus ? .on : .off
+        focusItem.isEnabled = !hasActiveSession
         menu.addItem(focusItem)
 
         let shortBreakItem = NSMenuItem(title: "短休息 5 分钟", action: #selector(selectShortBreak), keyEquivalent: "2")
         shortBreakItem.target = self
-        shortBreakItem.state = mode == .shortBreak ? .on : .off
+        shortBreakItem.isEnabled = !hasActiveSession
         menu.addItem(shortBreakItem)
 
         let longBreakItem = NSMenuItem(title: "长休息 15 分钟", action: #selector(selectLongBreak), keyEquivalent: "3")
         longBreakItem.target = self
-        longBreakItem.state = mode == .longBreak ? .on : .off
+        longBreakItem.isEnabled = !hasActiveSession
         menu.addItem(longBreakItem)
 
         let focusDurationItem = NSMenuItem(title: "设置专注时长...", action: #selector(editFocusDuration), keyEquivalent: "")
@@ -265,7 +282,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         hasActiveSession = true
         if sessionStartedAt == nil {
             sessionStartedAt = Date()
-            sessionPlannedDurationSeconds = duration(for: mode)
+            sessionPlannedDurationSeconds = isCountUp ? nil : duration(for: mode)
         }
         timer?.invalidate()
         timer = Timer.scheduledTimer(
@@ -307,6 +324,10 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     private func startMode(_ nextMode: PomodoroMode) {
+        guard !hasActiveSession else {
+            return
+        }
+        isCountUp = false
         setMode(nextMode)
         startTimer()
     }
@@ -317,7 +338,10 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
 
         let completedMode = mode
-        addPomodoroRecord(mode: completedMode)
+        addTimerRecord(
+            type: completedMode.recordType,
+            durationSeconds: sessionPlannedDurationSeconds ?? duration(for: completedMode)
+        )
 
         let nextMode: PomodoroMode
         if completedMode == .focus && focusSessions > 0 && focusSessions % 4 == 0 {
@@ -444,7 +468,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
         let minutes = remainingSeconds / 60
         let seconds = remainingSeconds % 60
-        statusMenuItem.title = "\(mode.menuTitle) · \(state) · \(String(format: "%02d:%02d", minutes, seconds))"
+        let noteSuffix = sessionNote.isEmpty ? "" : " · \(sessionNote)"
+        let timerTitle = isCountUp ? "正计时" : (mode == .focus ? "专注" : "休息")
+        statusMenuItem.title = "\(timerTitle) · \(state) · \(String(format: "%02d:%02d", minutes, seconds))\(noteSuffix)"
     }
 
     private func addRecordsMenuItems() {
@@ -533,6 +559,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     private func recordDurationMinutes(_ record: PomodoroRecord) -> Int {
+        if record.type == "count_up" {
+            return record.durationMinutes
+        }
         guard let startedAt = recordDateTimeFormatter.date(from: record.startedAt),
               let endedAt = recordDateTimeFormatter.date(from: record.endedAt) else {
             return record.durationMinutes
@@ -540,17 +569,15 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return max(0, Int(endedAt.timeIntervalSince(startedAt) / 60))
     }
 
-    private func addPomodoroRecord(mode completedMode: PomodoroMode) {
-        let plannedDurationSeconds = sessionPlannedDurationSeconds ?? duration(for: completedMode)
-        let startedAt = sessionStartedAt ?? Date().addingTimeInterval(-TimeInterval(plannedDurationSeconds))
+    private func addTimerRecord(type: String, durationSeconds: Int) {
+        let startedAt = sessionStartedAt ?? Date().addingTimeInterval(-TimeInterval(durationSeconds))
         let endedAt = Date()
-        let durationMinutes = plannedDurationSeconds / 60
         records.append(PomodoroRecord(
             startedAt: recordDateTimeFormatter.string(from: startedAt),
             endedAt: recordDateTimeFormatter.string(from: endedAt),
             date: recordDateFormatter.string(from: endedAt),
-            type: completedMode.recordType,
-            durationMinutes: durationMinutes,
+            type: type,
+            durationMinutes: durationSeconds / 60,
             note: sessionNote
         ))
         saveRecords()
@@ -668,8 +695,13 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
                 firstStart = sessionStartedAt
             }
 
-            let currentSessionDuration = sessionPlannedDurationSeconds ?? duration(for: mode)
-            let currentUsedSeconds = max(0, currentSessionDuration - remainingSeconds)
+            let currentUsedSeconds: Int
+            if isCountUp {
+                currentUsedSeconds = remainingSeconds
+            } else {
+                let currentSessionDuration = sessionPlannedDurationSeconds ?? duration(for: mode)
+                currentUsedSeconds = max(0, currentSessionDuration - remainingSeconds)
+            }
             pomodoroSeconds += currentUsedSeconds
         }
 
@@ -752,6 +784,12 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     @objc private func tick() {
+        if isCountUp {
+            remainingSeconds += 1
+            updateStatusTitle()
+            return
+        }
+
         guard remainingSeconds > 0 else {
             completeCurrentMode()
             return
@@ -765,18 +803,57 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
+    @objc private func startCountUpTimer() {
+        guard !hasActiveSession else {
+            return
+        }
+        isCountUp = true
+        remainingSeconds = 0
+        sessionStartedAt = nil
+        sessionPlannedDurationSeconds = nil
+        startTimer()
+    }
+
     @objc private func toggleTimer() {
+        guard hasActiveSession else {
+            startCountUpTimer()
+            return
+        }
         isRunning ? pauseTimer() : startTimer()
     }
 
-    @objc private func resetTimer() {
-        remainingSeconds = duration(for: mode)
-        stopTimer()
-    }
+    @objc private func endCurrentSession() {
+        guard hasActiveSession else {
+            return
+        }
 
-    @objc private func skipToNextMode() {
-        let nextMode = mode.next
-        setMode(nextMode)
+        let elapsedSeconds: Int
+        if isCountUp {
+            elapsedSeconds = remainingSeconds
+        } else {
+            let plannedDurationSeconds = sessionPlannedDurationSeconds ?? duration(for: mode)
+            elapsedSeconds = max(0, plannedDurationSeconds - remainingSeconds)
+        }
+
+        let endedCountUp = isCountUp
+        if elapsedSeconds >= 5 * 60 {
+            addTimerRecord(
+                type: endedCountUp ? "count_up" : mode.recordType,
+                durationSeconds: elapsedSeconds
+            )
+        }
+
+        remainingSeconds = endedCountUp ? 0 : duration(for: mode)
+        stopTimer()
+
+        if elapsedSeconds < 5 * 60 {
+            let alert = makeAlert()
+            alert.messageText = "本段未记录"
+            alert.informativeText = "计时时长不足 5 分钟，不会写入记录。"
+            alert.addButton(withTitle: "好")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+        }
     }
 
     @objc private func editSessionNote() {
@@ -855,7 +932,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
             focusDurationMinutes = minutes
             savePreferences()
-            if mode == .focus && !hasActiveSession {
+            if mode == .focus && !isCountUp && !hasActiveSession {
                 remainingSeconds = duration(for: .focus)
             }
             updateStatusTitle()
