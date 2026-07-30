@@ -15,7 +15,7 @@ A lightweight macOS menu bar Pomodoro timer.
 - Shows a tomato icon, countdown, and paused state in the menu bar
 - Supports count-up timing from `00:00`
 - Supports focus, short break, and long break sessions
-- Supports a custom focus duration
+- Supports extending an active countdown
 - Starts the selected timer mode directly from the menu
 - Press Space while the menu is open to start or pause
 - Sends a macOS Notification Center alert when a session completes

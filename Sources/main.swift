@@ -157,9 +157,8 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private var sessionPlannedDurationSeconds: Int?
     private var sessionNote = ""
     private var records: [PomodoroRecord] = []
-    private var focusDurationMinutes = 25
+    private let focusDurationMinutes = 25
     private let recordsStorageKey = "pomodoro.records"
-    private let focusDurationStorageKey = "pomodoro.focusDurationMinutes"
     private let recordsDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".pomodoro-status-bar", isDirectory: true)
     private let recordsFileName = "records.json"
@@ -198,7 +197,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         terminateOtherInstances()
         configureApplicationIcon()
         configureNotifications()
-        loadPreferences()
         loadRecords()
         remainingSeconds = duration(for: .focus)
         configureStatusItem()
@@ -262,6 +260,12 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             menu.addItem(startMenuItem)
         }
 
+        if hasActiveSession && !isCountUp {
+            let extendItem = NSMenuItem(title: "延长时间...", action: #selector(extendActiveCountdown), keyEquivalent: "")
+            extendItem.target = self
+            menu.addItem(extendItem)
+        }
+
         let noteItem = NSMenuItem(title: sessionNote.isEmpty ? "设置本段备注..." : "修改本段备注...", action: #selector(editSessionNote), keyEquivalent: "e")
         noteItem.target = self
         menu.addItem(noteItem)
@@ -282,10 +286,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         longBreakItem.target = self
         longBreakItem.isEnabled = !hasActiveSession
         menu.addItem(longBreakItem)
-
-        let focusDurationItem = NSMenuItem(title: "设置专注时长...", action: #selector(editFocusDuration), keyEquivalent: "")
-        focusDurationItem.target = self
-        menu.addItem(focusDurationItem)
 
         menu.addItem(.separator())
 
@@ -613,17 +613,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         migrateRecordsFromUserDefaults()
     }
 
-    private func loadPreferences() {
-        let storedFocusDuration = UserDefaults.standard.integer(forKey: focusDurationStorageKey)
-        if storedFocusDuration > 0 {
-            focusDurationMinutes = min(180, max(1, storedFocusDuration))
-        }
-    }
-
-    private func savePreferences() {
-        UserDefaults.standard.set(focusDurationMinutes, forKey: focusDurationStorageKey)
-    }
-
     private func saveRecords() {
         do {
             try FileManager.default.createDirectory(
@@ -888,39 +877,42 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         startMode(.longBreak)
     }
 
-    @objc private func editFocusDuration() {
+    @objc private func extendActiveCountdown() {
+        guard hasActiveSession && !isCountUp else {
+            return
+        }
+
         let alert = makeAlert()
-        alert.messageText = "专注时长"
-        alert.informativeText = "请输入 1 到 180 分钟。新的时长会用于下一段专注。"
-        alert.addButton(withTitle: "保存")
+        alert.messageText = "延长时间"
+        alert.informativeText = "请输入要增加的分钟数（1 到 180）。"
+        alert.addButton(withTitle: "增加")
         alert.addButton(withTitle: "取消")
 
         let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
-        input.stringValue = "\(focusDurationMinutes)"
-        input.placeholderString = "25"
+        input.stringValue = "5"
+        input.placeholderString = "5"
         alert.accessoryView = input
 
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn {
             let trimmed = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
             guard let minutes = Int(trimmed), (1...180).contains(minutes) else {
-                showInvalidFocusDurationAlert()
+                showInvalidExtensionDurationAlert()
                 return
             }
 
-            focusDurationMinutes = minutes
-            savePreferences()
-            if mode == .focus && !isCountUp && !hasActiveSession {
-                remainingSeconds = duration(for: .focus)
-            }
+            let addedSeconds = minutes * 60
+            remainingSeconds += addedSeconds
+            let plannedDurationSeconds = sessionPlannedDurationSeconds ?? duration(for: mode)
+            sessionPlannedDurationSeconds = plannedDurationSeconds + addedSeconds
             updateStatusTitle()
             rebuildMenu()
         }
     }
 
-    private func showInvalidFocusDurationAlert() {
+    private func showInvalidExtensionDurationAlert() {
         let alert = makeAlert()
-        alert.messageText = "专注时长无效"
+        alert.messageText = "增加时长无效"
         alert.informativeText = "请输入 1 到 180 之间的整数分钟。"
         alert.addButton(withTitle: "好")
         NSApp.activate(ignoringOtherApps: true)
