@@ -21,7 +21,7 @@ A lightweight macOS menu bar Pomodoro timer.
 - Sends a macOS Notification Center alert when a session completes
 - Records all Pomodoro and break sessions for the current day
 - Saves records as readable JSON at `~/.pomodoro-status-bar/records.json`
-- Automatically backs up records before clearing them
+- Opens the record file directly from the menu
 
 ## Build
 

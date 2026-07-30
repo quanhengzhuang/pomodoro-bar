@@ -539,14 +539,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             menu.addItem(allRecordsItem)
         }
 
-        let fileItem = NSMenuItem(title: "记录文件：~/.pomodoro-status-bar/records.json", action: nil, keyEquivalent: "")
-        fileItem.isEnabled = false
-        menu.addItem(fileItem)
-
-        let clearItem = NSMenuItem(title: "清空记录", action: #selector(clearRecords), keyEquivalent: "")
-        clearItem.target = self
-        clearItem.isEnabled = !records.isEmpty
-        menu.addItem(clearItem)
+        let openRecordsItem = NSMenuItem(title: "打开记录文件...", action: #selector(openRecordsFile), keyEquivalent: "")
+        openRecordsItem.target = self
+        menu.addItem(openRecordsItem)
     }
 
     private func recordMenuTitle(dotColor: NSColor, text: String) -> NSAttributedString {
@@ -735,29 +730,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return max(0, elapsedSinceFirstStart - pomodoroSeconds)
     }
 
-    private func backupRecordsBeforeClearing() -> URL? {
-        guard FileManager.default.fileExists(atPath: recordsFileURL.path) else {
-            return nil
-        }
-
-        do {
-            try FileManager.default.createDirectory(
-                at: recordsDirectoryURL,
-                withIntermediateDirectories: true
-            )
-            let timestamp = backupDateFormatter.string(from: Date())
-            let backupURL = recordsDirectoryURL.appendingPathComponent("records.backup-\(timestamp).json")
-            if FileManager.default.fileExists(atPath: backupURL.path) {
-                try FileManager.default.removeItem(at: backupURL)
-            }
-            try FileManager.default.copyItem(at: recordsFileURL, to: backupURL)
-            return backupURL
-        } catch {
-            NSLog("Could not backup pomodoro records: \(error.localizedDescription)")
-            return nil
-        }
-    }
-
     private func migrateRecordsFromUserDefaults() {
         guard let data = UserDefaults.standard.data(forKey: recordsStorageKey) else {
             records = []
@@ -794,14 +766,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd HH:mm:ss"
-        return formatter
-    }
-
-    private var backupDateFormatter: DateFormatter {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyyMMdd-HHmmss"
         return formatter
     }
 
@@ -897,26 +861,18 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
-    @objc private func clearRecords() {
-        let alert = makeAlert()
-        alert.messageText = "清空番茄记录？"
-        alert.informativeText = "清空前会自动备份当前 records.json。"
-        alert.addButton(withTitle: "清空")
-        alert.addButton(withTitle: "取消")
-
-        NSApp.activate(ignoringOtherApps: true)
-        if alert.runModal() == .alertFirstButtonReturn {
-            let backupURL = backupRecordsBeforeClearing()
-            records = []
+    @objc private func openRecordsFile() {
+        if !FileManager.default.fileExists(atPath: recordsFileURL.path) {
             saveRecords()
-            if let backupURL {
-                let backupAlert = makeAlert()
-                backupAlert.messageText = "记录已清空"
-                backupAlert.informativeText = "备份文件：\(backupURL.path)"
-                backupAlert.addButton(withTitle: "好")
-                backupAlert.runModal()
-            }
-            rebuildMenu()
+        }
+
+        if !NSWorkspace.shared.open(recordsFileURL) {
+            let alert = makeAlert()
+            alert.messageText = "无法打开记录文件"
+            alert.informativeText = recordsFileURL.path
+            alert.addButton(withTitle: "好")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
         }
     }
 

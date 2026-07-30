@@ -5,7 +5,7 @@
 - [x] Show the current note in the menu status row.
 - [ ] Evaluate whether the note-editing action can be placed in the status row.
 - [ ] Group “All Records” into submenus for the last 7 days while retaining the 10 most recent records.
-- [ ] Remove the dangerous “Clear Records” action and add an action to open `records.json`.
+- [x] Remove the dangerous “Clear Records” action and add an action to open `records.json`.
 - [ ] Allow extending an active timer by 5 minutes by default; remove “Set Focus Duration” while keeping the default focus duration at 25 minutes.
 - [x] Use `scripts/restart.sh` to run a new version and automatically exit the old instance.
 - [x] Unify the application icon, menu bar tomato icon, and README icon.
