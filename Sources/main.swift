@@ -184,6 +184,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        terminateOtherInstances()
         configureApplicationIcon()
         configureNotifications()
         loadPreferences()
@@ -192,6 +193,18 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         configureStatusItem()
         rebuildMenu()
         updateStatusTitle()
+    }
+
+    private func terminateOtherInstances() {
+        guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
+            return
+        }
+
+        let currentProcessIdentifier = ProcessInfo.processInfo.processIdentifier
+        for application in NSRunningApplication.runningApplications(withBundleIdentifier: bundleIdentifier)
+            where application.processIdentifier != currentProcessIdentifier {
+            application.terminate()
+        }
     }
 
     private func configureApplicationIcon() {

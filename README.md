@@ -33,6 +33,14 @@
 dist/PomodoroBar.app
 ```
 
+构建并运行最新版本，同时退出已运行的旧实例：
+
+```bash
+./scripts/restart.sh
+```
+
+旧实例中尚未结束的计时会被放弃，已保存的记录不受影响。
+
 ## 记录格式
 
 ```json
