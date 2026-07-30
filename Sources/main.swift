@@ -222,22 +222,21 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         menu.addItem(statusMenuItem)
         menu.addItem(.separator())
 
-        startMenuItem.target = self
-        startMenuItem.isEnabled = !hasActiveSession
-        startMenuItem.keyEquivalent = hasActiveSession ? "" : " "
-        startMenuItem.keyEquivalentModifierMask = []
-        menu.addItem(startMenuItem)
+        if hasActiveSession {
+            pauseMenuItem.target = self
+            pauseMenuItem.title = isRunning ? "暂停" : "继续"
+            pauseMenuItem.keyEquivalent = " "
+            pauseMenuItem.keyEquivalentModifierMask = []
+            menu.addItem(pauseMenuItem)
 
-        pauseMenuItem.target = self
-        pauseMenuItem.title = hasActiveSession && !isRunning ? "继续" : "暂停"
-        pauseMenuItem.isEnabled = hasActiveSession
-        pauseMenuItem.keyEquivalent = hasActiveSession ? " " : ""
-        pauseMenuItem.keyEquivalentModifierMask = []
-        menu.addItem(pauseMenuItem)
-
-        endMenuItem.target = self
-        endMenuItem.isEnabled = hasActiveSession
-        menu.addItem(endMenuItem)
+            endMenuItem.target = self
+            menu.addItem(endMenuItem)
+        } else {
+            startMenuItem.target = self
+            startMenuItem.keyEquivalent = " "
+            startMenuItem.keyEquivalentModifierMask = []
+            menu.addItem(startMenuItem)
+        }
 
         let noteItem = NSMenuItem(title: sessionNote.isEmpty ? "设置本段备注..." : "修改本段备注...", action: #selector(editSessionNote), keyEquivalent: "e")
         noteItem.target = self
