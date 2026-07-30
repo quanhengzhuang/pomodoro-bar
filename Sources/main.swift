@@ -811,6 +811,18 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
 
         let endedCountUp = isCountUp
+        if elapsedSeconds < 5 * 60 {
+            let alert = makeAlert()
+            alert.messageText = "结束本段？"
+            alert.informativeText = "计时时长不足 5 分钟，结束后不会写入记录。"
+            alert.addButton(withTitle: "结束")
+            alert.addButton(withTitle: "取消")
+            NSApp.activate(ignoringOtherApps: true)
+            guard alert.runModal() == .alertFirstButtonReturn else {
+                return
+            }
+        }
+
         if elapsedSeconds >= 5 * 60 {
             addTimerRecord(
                 type: endedCountUp ? "count_up" : mode.recordType,
@@ -820,15 +832,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         remainingSeconds = endedCountUp ? 0 : duration(for: mode)
         stopTimer()
-
-        if elapsedSeconds < 5 * 60 {
-            let alert = makeAlert()
-            alert.messageText = "本段未记录"
-            alert.informativeText = "计时时长不足 5 分钟，不会写入记录。"
-            alert.addButton(withTitle: "好")
-            NSApp.activate(ignoringOtherApps: true)
-            alert.runModal()
-        }
     }
 
     @objc private func editSessionNote() {

@@ -15,3 +15,4 @@
 - [x] Show elapsed time in the first menu row for both count-up and countdown timers.
 - [x] Exclude paused time from active session duration and include it in “time outside Pomodoro”.
 - [x] Label count-up sessions as “Timer” and use an orange icon for their historical records.
+- [x] When ending a session shorter than 5 minutes, show a confirmation alert with confirm and cancel instead of ending immediately.
