@@ -211,6 +211,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         startPauseMenuItem.target = self
         startPauseMenuItem.title = isRunning ? "暂停" : "开始"
+        startPauseMenuItem.keyEquivalentModifierMask = []
         menu.addItem(startPauseMenuItem)
 
         let resetItem = NSMenuItem(title: "重置", action: #selector(resetTimer), keyEquivalent: "r")
