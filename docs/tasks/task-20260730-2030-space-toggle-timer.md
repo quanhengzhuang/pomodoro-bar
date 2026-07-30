@@ -13,7 +13,7 @@
 
 - `Sources/main.swift`
 - `README.md`
-- `docs/todo.md`
+- `docs/TODO.md`
 - `docs/tasks/task-20260730-2030-space-toggle-timer.md`
 
 ## 预估代码行数
