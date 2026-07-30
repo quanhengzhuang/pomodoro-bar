@@ -13,7 +13,7 @@
 ## 影响文件
 
 - `scripts/build.sh`
-- `docs/tasks/2026-07-28-backup-app-before-build.md`
+- `docs/tasks/task-20260728-2222-backup-app-before-build.md`
 
 ## 预估代码行数
 

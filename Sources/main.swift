@@ -162,9 +162,16 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     )
     private lazy var tomatoStatusIcon = makeTomatoStatusIcon()
     private lazy var pauseStatusIcon = makePauseStatusIcon()
+    private lazy var applicationIcon: NSImage? = {
+        guard let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") else {
+            return nil
+        }
+        return NSImage(contentsOf: url)
+    }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
+        configureApplicationIcon()
         configureNotifications()
         loadPreferences()
         loadRecords()
@@ -172,6 +179,16 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         configureStatusItem()
         rebuildMenu()
         updateStatusTitle()
+    }
+
+    private func configureApplicationIcon() {
+        NSApp.applicationIconImage = applicationIcon
+    }
+
+    private func makeAlert() -> NSAlert {
+        let alert = NSAlert()
+        alert.icon = applicationIcon
+        return alert
     }
 
     private func configureNotifications() {
@@ -482,16 +499,12 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
                 .font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)
             ]
         ))
-        let recordFont = NSFont(name: "Monaco", size: NSFont.systemFontSize)
-            ?? NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-        let textAttributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: NSColor.labelColor,
-            .font: recordFont
-        ]
-
         title.append(NSAttributedString(
             string: text,
-            attributes: textAttributes
+            attributes: [
+                .foregroundColor: NSColor.labelColor,
+                .font: NSFont.menuFont(ofSize: 0)
+            ]
         ))
         return title
     }
@@ -766,7 +779,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     @objc private func editSessionNote() {
-        let alert = NSAlert()
+        let alert = makeAlert()
         alert.messageText = "本段备注"
         alert.informativeText = "备注会随本段完成记录一起保存。"
         alert.addButton(withTitle: "保存")
@@ -785,7 +798,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     @objc private func clearRecords() {
-        let alert = NSAlert()
+        let alert = makeAlert()
         alert.messageText = "清空番茄记录？"
         alert.informativeText = "清空前会自动备份当前 records.json。"
         alert.addButton(withTitle: "清空")
@@ -797,7 +810,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             records = []
             saveRecords()
             if let backupURL {
-                let backupAlert = NSAlert()
+                let backupAlert = makeAlert()
                 backupAlert.messageText = "记录已清空"
                 backupAlert.informativeText = "备份文件：\(backupURL.path)"
                 backupAlert.addButton(withTitle: "好")
@@ -820,7 +833,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     @objc private func editFocusDuration() {
-        let alert = NSAlert()
+        let alert = makeAlert()
         alert.messageText = "专注时长"
         alert.informativeText = "请输入 1 到 180 分钟。新的时长会用于下一段专注。"
         alert.addButton(withTitle: "保存")
@@ -850,7 +863,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     private func showInvalidFocusDurationAlert() {
-        let alert = NSAlert()
+        let alert = makeAlert()
         alert.messageText = "专注时长无效"
         alert.informativeText = "请输入 1 到 180 之间的整数分钟。"
         alert.addButton(withTitle: "好")

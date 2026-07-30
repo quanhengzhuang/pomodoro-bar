@@ -13,7 +13,7 @@
 ## 影响文件
 
 - `Sources/main.swift`
-- `docs/tasks/2026-07-28-record-time-range.md`
+- `docs/tasks/task-20260728-2136-record-time-range.md`
 
 ## 预估代码行数
 

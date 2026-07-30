@@ -13,7 +13,7 @@
 ## 影响文件
 
 - `Sources/main.swift`
-- `docs/tasks/2026-07-28-collapsible-records.md`
+- `docs/tasks/task-20260728-2149-collapsible-records.md`
 
 ## 预估代码行数
 

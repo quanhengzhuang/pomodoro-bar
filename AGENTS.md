@@ -3,7 +3,7 @@
 ## 开发流程
 
 - 非平凡改动先写 task，再等用户确认后编码。
-- task 放在 `docs/tasks/YYYY-MM-DD-xxxxxx.md`。
+- task 放在 `docs/tasks/task-{YYYYMMDD}-{HHmm}-{title}.md`，例如 `docs/tasks/task-20260101-0930-icon-consistency.md`。
 - task 保持极简，固定包含：目标、改动、影响文件、预估代码行数。
 - 只在确实涉及数据、兼容、风险或验证重点时额外补充说明。
 - 实现后简单补充实际变更和验证结果。
