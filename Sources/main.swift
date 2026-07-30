@@ -478,8 +478,17 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         } else {
             state = "未开始"
         }
-        let minutes = remainingSeconds / 60
-        let seconds = remainingSeconds % 60
+        let elapsedSeconds: Int
+        if isCountUp {
+            elapsedSeconds = remainingSeconds
+        } else if hasActiveSession {
+            let plannedDurationSeconds = sessionPlannedDurationSeconds ?? duration(for: mode)
+            elapsedSeconds = max(0, plannedDurationSeconds - remainingSeconds)
+        } else {
+            elapsedSeconds = 0
+        }
+        let minutes = elapsedSeconds / 60
+        let seconds = elapsedSeconds % 60
         let noteSuffix = sessionNote.isEmpty ? "" : " · \(sessionNote)"
         let timerTitle = isCountUp ? "正计时" : (mode == .focus ? "专注" : "休息")
         statusMenuItem.title = "\(timerTitle) · \(state) · \(String(format: "%02d:%02d", minutes, seconds))\(noteSuffix)"
