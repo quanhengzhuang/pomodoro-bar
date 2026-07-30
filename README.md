@@ -1,3 +1,5 @@
+[中文](README.md) | [English](docs/en/README.md)
+
 <img src="docs/assets/icon.png" alt="Pomodoro Bar icon" width="148">
 
 # Pomodoro Bar · 菜单栏番茄钟

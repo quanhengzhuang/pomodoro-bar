@@ -1,5 +1,3 @@
-[中文](task-20260730-2056-elapsed-time-status.md) | [English](task-20260730-2056-elapsed-time-status.en.md)
-
 # 状态行统一显示已过时间
 
 ## 目标
@@ -17,9 +15,9 @@
 
 - `Sources/main.swift`
 - `docs/TODO.md`
-- `docs/TODO.en.md`
+- `docs/en/TODO.md`
 - `docs/tasks/task-20260730-2056-elapsed-time-status.md`
-- `docs/tasks/task-20260730-2056-elapsed-time-status.en.md`
+- `docs/en/tasks/task-20260730-2056-elapsed-time-status.md`
 
 ## 预估代码行数
 
@@ -31,7 +29,7 @@
 - 倒计时活动期间显示计划时长减去剩余时间，未开始时显示 `00:00`。
 - 暂停时计时器不推进，因此第一行的已过时间保持不变。
 - 菜单栏本体继续显示原有的正计时累计时间或倒计时剩余时间。
-- 新增中英文 TODO 切换链接并同步任务状态。
+- 同步更新中英文 TODO。
 
 ## 验证结果
 

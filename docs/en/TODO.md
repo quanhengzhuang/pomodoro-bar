@@ -1,5 +1,3 @@
-[中文](TODO.md) | [English](TODO.en.md)
-
 # TODO
 
 - [x] Save a record when a timer is ended after reaching 5 minutes, with the prior behavior documented in the task.
@@ -13,6 +11,6 @@
 - [x] Unify the application icon, menu bar tomato icon, and README icon.
 - [x] Press Space while the menu is open to pause or resume.
 - [x] Remove “Reset” and “Skip to Next Session” in favor of “End”.
-- [ ] Provide Chinese and English versions of all documentation, with language-switch links in the README.
+- [x] Provide Chinese and English versions of all documentation, with language-switch links only in the README.
 - [x] Show elapsed time in the first menu row for both count-up and countdown timers.
 - [ ] Exclude paused time from the session duration instead of deriving duration from the start and end timestamps, and add paused time to “time outside Pomodoro”.
