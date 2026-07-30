@@ -507,11 +507,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     private func addRecordsMenuItems() {
         let today = recordDateFormatter.string(from: Date())
-        let todayFocusCount = records.filter { $0.date == today && $0.type == "focus" }.count
-        let todayTotalCount = records.filter { $0.date == today }.count
-        let todayItem = NSMenuItem(title: "今日完成：\(todayFocusCount) 个番茄 · 共 \(todayTotalCount) 段", action: nil, keyEquivalent: "")
-        todayItem.isEnabled = false
-        menu.addItem(todayItem)
+        let insideItem = NSMenuItem(title: "番茄内时间：\(formattedPomodoroTimeToday())", action: nil, keyEquivalent: "")
+        insideItem.isEnabled = false
+        menu.addItem(insideItem)
 
         let outsideItem = NSMenuItem(title: "番茄外时间：\(formattedOutsidePomodoroTimeToday())", action: nil, keyEquivalent: "")
         outsideItem.isEnabled = false
@@ -675,14 +673,30 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     private func formattedOutsidePomodoroTimeToday() -> String {
         let seconds = outsidePomodoroSecondsToday()
+        return formattedDuration(seconds)
+    }
+
+    private func formattedPomodoroTimeToday() -> String {
+        let seconds = pomodoroSecondsToday()
+        return formattedDuration(seconds)
+    }
+
+    private func formattedDuration(_ seconds: Int) -> String {
         return "\(seconds / 3600) 小时 \((seconds % 3600) / 60) 分钟"
     }
 
     private func outsidePomodoroSecondsToday() -> Int {
+        guard let firstStart = firstPomodoroStartToday() else {
+            return 0
+        }
+
+        let elapsedSinceFirstStart = max(0, Int(Date().timeIntervalSince(firstStart)))
+        return max(0, elapsedSinceFirstStart - pomodoroSecondsToday())
+    }
+
+    private func firstPomodoroStartToday() -> Date? {
         let today = recordDateFormatter.string(from: Date())
-        let now = Date()
         var firstStart: Date?
-        var pomodoroSeconds = 0
 
         for record in records where record.date == today {
             guard let startedAt = recordDateTimeFormatter.date(from: record.startedAt) else {
@@ -692,15 +706,26 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             if firstStart == nil || startedAt < firstStart! {
                 firstStart = startedAt
             }
-
-            pomodoroSeconds += max(0, record.durationSeconds)
         }
 
         if let sessionStartedAt, recordDateFormatter.string(from: sessionStartedAt) == today {
             if firstStart == nil || sessionStartedAt < firstStart! {
                 firstStart = sessionStartedAt
             }
+        }
 
+        return firstStart
+    }
+
+    private func pomodoroSecondsToday() -> Int {
+        let today = recordDateFormatter.string(from: Date())
+        var pomodoroSeconds = 0
+
+        for record in records where record.date == today {
+            pomodoroSeconds += max(0, record.durationSeconds)
+        }
+
+        if let sessionStartedAt, recordDateFormatter.string(from: sessionStartedAt) == today {
             let currentUsedSeconds: Int
             if isCountUp {
                 currentUsedSeconds = remainingSeconds
@@ -711,12 +736,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             pomodoroSeconds += currentUsedSeconds
         }
 
-        guard let firstStart else {
-            return 0
-        }
-
-        let elapsedSinceFirstStart = max(0, Int(now.timeIntervalSince(firstStart)))
-        return max(0, elapsedSinceFirstStart - pomodoroSeconds)
+        return pomodoroSeconds
     }
 
     private func migrateRecordsFromUserDefaults() {
