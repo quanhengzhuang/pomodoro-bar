@@ -51,6 +51,7 @@ An unfinished timer in the old instance is discarded; saved records are unaffect
     "date" : "2026-07-28",
     "startedAt" : "2026-07-28 15:49:45",
     "endedAt" : "2026-07-28 16:14:45",
+    "durationSeconds" : 1500,
     "durationMinutes" : 25,
     "type" : "focus",
     "note" : "Weekly report"

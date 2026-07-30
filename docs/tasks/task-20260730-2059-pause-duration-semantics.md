@@ -29,3 +29,17 @@
 
 - 旧记录缺少 `durationSeconds` 时使用 `durationMinutes × 60`，不删除或覆盖其他字段。
 - JSON 继续保留可读的 `durationMinutes`，新记录额外保存精确秒数。
+
+## 实际变更
+
+- `PomodoroRecord` 新增 `durationSeconds`；新记录保存不含暂停的实际计时秒数，并同步生成 `durationMinutes`。
+- 旧记录解码时缺少秒数字段会回退到分钟数，后续保存时补齐新字段。
+- 菜单记录时长统一读取有效计时秒数，不再使用开始时间减结束时间。
+- 番茄外时间从首段开始至当前的墙上时间中减去历史和当前的有效计时，因此暂停自动归入番茄外时间。
+- README 的中英文 JSON 示例与 TODO 已同步更新。
+
+## 验证结果
+
+- `./scripts/build.sh` 构建成功。
+- `git diff --check` 通过。
+- 构建仅有现存的 `NSUserNotification` API 弃用警告。

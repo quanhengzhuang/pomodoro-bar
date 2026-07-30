@@ -43,6 +43,7 @@ struct PomodoroRecord: Codable {
     let endedAt: String
     let date: String
     let type: String
+    let durationSeconds: Int
     let durationMinutes: Int
     let note: String
 
@@ -50,6 +51,7 @@ struct PomodoroRecord: Codable {
         case date
         case startedAt
         case endedAt
+        case durationSeconds
         case durationMinutes
         case type
         case note
@@ -57,12 +59,13 @@ struct PomodoroRecord: Codable {
         case title
     }
 
-    init(startedAt: String, endedAt: String, date: String, type: String, durationMinutes: Int, note: String) {
+    init(startedAt: String, endedAt: String, date: String, type: String, durationSeconds: Int, note: String) {
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.date = date
         self.type = type
-        self.durationMinutes = durationMinutes
+        self.durationSeconds = durationSeconds
+        self.durationMinutes = durationSeconds / 60
         self.note = note
     }
 
@@ -80,6 +83,8 @@ struct PomodoroRecord: Codable {
         }
 
         durationMinutes = try container.decode(Int.self, forKey: .durationMinutes)
+        durationSeconds = try container.decodeIfPresent(Int.self, forKey: .durationSeconds)
+            ?? durationMinutes * 60
         type = try container.decodeIfPresent(String.self, forKey: .type) ?? "focus"
         note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
         date = try container.decodeIfPresent(String.self, forKey: .date) ?? String(endedAt.prefix(10))
@@ -90,6 +95,7 @@ struct PomodoroRecord: Codable {
         try container.encode(date, forKey: .date)
         try container.encode(startedAt, forKey: .startedAt)
         try container.encode(endedAt, forKey: .endedAt)
+        try container.encode(durationSeconds, forKey: .durationSeconds)
         try container.encode(durationMinutes, forKey: .durationMinutes)
         try container.encode(type, forKey: .type)
         try container.encode(note, forKey: .note)
@@ -580,14 +586,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     private func recordDurationMinutes(_ record: PomodoroRecord) -> Int {
-        if record.type == "count_up" {
-            return record.durationMinutes
-        }
-        guard let startedAt = recordDateTimeFormatter.date(from: record.startedAt),
-              let endedAt = recordDateTimeFormatter.date(from: record.endedAt) else {
-            return record.durationMinutes
-        }
-        return max(0, Int(endedAt.timeIntervalSince(startedAt) / 60))
+        record.durationSeconds / 60
     }
 
     private func addTimerRecord(type: String, durationSeconds: Int) {
@@ -598,7 +597,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             endedAt: recordDateTimeFormatter.string(from: endedAt),
             date: recordDateFormatter.string(from: endedAt),
             type: type,
-            durationMinutes: durationSeconds / 60,
+            durationSeconds: durationSeconds,
             note: sessionNote
         ))
         saveRecords()
@@ -649,6 +648,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
                 "date" : "\(jsonEscaped(record.date))",
                 "startedAt" : "\(jsonEscaped(record.startedAt))",
                 "endedAt" : "\(jsonEscaped(record.endedAt))",
+                "durationSeconds" : \(record.durationSeconds),
                 "durationMinutes" : \(record.durationMinutes),
                 "type" : "\(jsonEscaped(record.type))",
                 "note" : "\(jsonEscaped(record.note))"
@@ -704,11 +704,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
                 firstStart = startedAt
             }
 
-            if let endedAt = recordDateTimeFormatter.date(from: record.endedAt) {
-                pomodoroSeconds += max(0, Int(endedAt.timeIntervalSince(startedAt)))
-            } else {
-                pomodoroSeconds += max(0, record.durationMinutes * 60)
-            }
+            pomodoroSeconds += max(0, record.durationSeconds)
         }
 
         if let sessionStartedAt, recordDateFormatter.string(from: sessionStartedAt) == today {
