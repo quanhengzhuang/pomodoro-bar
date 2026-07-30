@@ -14,3 +14,4 @@
 - [x] Provide Chinese and English versions of all documentation, with language-switch links only in the README.
 - [x] Show elapsed time in the first menu row for both count-up and countdown timers.
 - [x] Exclude paused time from active session duration and include it in “time outside Pomodoro”.
+- [x] Label count-up sessions as “Timer” and use an orange icon for their historical records.

@@ -108,16 +108,21 @@ struct PomodoroRecord: Codable {
         case "short_break", "long_break":
             return "休息"
         case "count_up":
-            return "正计时"
+            return "计时"
         default:
             return type
         }
     }
 
     var menuDotColor: NSColor {
-        type == "focus"
-            ? NSColor(calibratedRed: 0.88, green: 0.20, blue: 0.18, alpha: 1)
-            : NSColor(calibratedRed: 0.10, green: 0.54, blue: 0.38, alpha: 1)
+        switch type {
+        case "focus":
+            return NSColor(calibratedRed: 0.88, green: 0.20, blue: 0.18, alpha: 1)
+        case "count_up":
+            return NSColor(calibratedRed: 0.95, green: 0.52, blue: 0.10, alpha: 1)
+        default:
+            return NSColor(calibratedRed: 0.10, green: 0.54, blue: 0.38, alpha: 1)
+        }
     }
 
     private static func makeDateString(from date: Date) -> String {
@@ -496,7 +501,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         let minutes = elapsedSeconds / 60
         let seconds = elapsedSeconds % 60
         let noteSuffix = sessionNote.isEmpty ? "" : " · \(sessionNote)"
-        let timerTitle = isCountUp ? "正计时" : (mode == .focus ? "专注" : "休息")
+        let timerTitle = isCountUp ? "计时" : (mode == .focus ? "专注" : "休息")
         statusMenuItem.title = "\(timerTitle) · \(state) · \(String(format: "%02d:%02d", minutes, seconds))\(noteSuffix)"
     }
 
