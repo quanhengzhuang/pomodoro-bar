@@ -6,8 +6,8 @@
 - task 放在 `docs/tasks/task-{YYYYMMDD}-{HHmm}-{title}.md`，例如 `docs/tasks/task-20260101-0930-icon-consistency.md`。
 - task 保持极简，固定包含：目标、改动、影响文件、预估代码行数。
 - 只在确实涉及数据、兼容、风险或验证重点时额外补充说明。
-- 实现后简单补充实际变更和验证结果。
-- 小修复可跳过 task，但要说明原因。
+- 所有文档，提供中文/英文两份
+- 任务完成后及时 git push
 
 ## 数据兼容
 
