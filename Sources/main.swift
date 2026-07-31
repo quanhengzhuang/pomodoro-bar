@@ -155,6 +155,8 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private var remainingSeconds = 25 * 60
     private var sessionStartedAt: Date?
     private var sessionPlannedDurationSeconds: Int?
+    private var sessionPausedAt: Date?
+    private var sessionPausedSeconds = 0
     private var sessionNote = ""
     private var records: [PomodoroRecord] = []
     private let focusDurationMinutes = 25
@@ -301,11 +303,16 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     private func startTimer() {
+        let now = Date()
         isRunning = true
         hasActiveSession = true
         if sessionStartedAt == nil {
-            sessionStartedAt = Date()
+            sessionStartedAt = now
             sessionPlannedDurationSeconds = isCountUp ? nil : duration(for: mode)
+        }
+        if let sessionPausedAt {
+            sessionPausedSeconds += max(0, Int(now.timeIntervalSince(sessionPausedAt)))
+            self.sessionPausedAt = nil
         }
         timer?.invalidate()
         timer = Timer.scheduledTimer(
@@ -322,6 +329,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     private func pauseTimer() {
         isRunning = false
+        sessionPausedAt = Date()
         timer?.invalidate()
         timer = nil
         updateStatusTitle()
@@ -333,6 +341,8 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         hasActiveSession = false
         sessionStartedAt = nil
         sessionPlannedDurationSeconds = nil
+        sessionPausedAt = nil
+        sessionPausedSeconds = 0
         sessionNote = ""
         timer?.invalidate()
         timer = nil
@@ -408,8 +418,17 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     private func updateStatusTitle() {
-        let minutes = remainingSeconds / 60
-        let seconds = remainingSeconds % 60
+        let displaySeconds: Int
+        if isCountUp, hasActiveSession {
+            displaySeconds = activeSessionSeconds()
+        } else if hasActiveSession {
+            let plannedDurationSeconds = sessionPlannedDurationSeconds ?? duration(for: mode)
+            displaySeconds = max(0, plannedDurationSeconds - activeSessionSeconds())
+        } else {
+            displaySeconds = remainingSeconds
+        }
+        let minutes = displaySeconds / 60
+        let seconds = displaySeconds % 60
         let title = NSMutableAttributedString()
 
         let iconAttachment = NSTextAttachment()
@@ -490,11 +509,8 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             state = "未开始"
         }
         let elapsedSeconds: Int
-        if isCountUp {
-            elapsedSeconds = remainingSeconds
-        } else if hasActiveSession {
-            let plannedDurationSeconds = sessionPlannedDurationSeconds ?? duration(for: mode)
-            elapsedSeconds = max(0, plannedDurationSeconds - remainingSeconds)
+        if hasActiveSession {
+            elapsedSeconds = activeSessionSeconds()
         } else {
             elapsedSeconds = 0
         }
@@ -585,6 +601,20 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     private func recordDurationMinutes(_ record: PomodoroRecord) -> Int {
         record.durationSeconds / 60
+    }
+
+    private func activeSessionSeconds(at date: Date = Date()) -> Int {
+        guard let sessionStartedAt else {
+            return 0
+        }
+
+        var pausedSeconds = sessionPausedSeconds
+        if let sessionPausedAt {
+            pausedSeconds += max(0, Int(date.timeIntervalSince(sessionPausedAt)))
+        }
+
+        let elapsedSeconds = max(0, Int(date.timeIntervalSince(sessionStartedAt)))
+        return max(0, elapsedSeconds - pausedSeconds)
     }
 
     private func addTimerRecord(type: String, durationSeconds: Int) {
@@ -726,14 +756,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
 
         if let sessionStartedAt, recordDateFormatter.string(from: sessionStartedAt) == today {
-            let currentUsedSeconds: Int
-            if isCountUp {
-                currentUsedSeconds = remainingSeconds
-            } else {
-                let currentSessionDuration = sessionPlannedDurationSeconds ?? duration(for: mode)
-                currentUsedSeconds = max(0, currentSessionDuration - remainingSeconds)
-            }
-            pomodoroSeconds += currentUsedSeconds
+            pomodoroSeconds += activeSessionSeconds()
         }
 
         return pomodoroSeconds
@@ -780,17 +803,18 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     @objc private func tick() {
         if isCountUp {
-            remainingSeconds += 1
             updateStatusTitle()
             return
         }
+
+        let plannedDurationSeconds = sessionPlannedDurationSeconds ?? duration(for: mode)
+        remainingSeconds = max(0, plannedDurationSeconds - activeSessionSeconds())
 
         guard remainingSeconds > 0 else {
             completeCurrentMode()
             return
         }
 
-        remainingSeconds -= 1
         updateStatusTitle()
 
         if remainingSeconds == 0 {
@@ -822,13 +846,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             return
         }
 
-        let elapsedSeconds: Int
-        if isCountUp {
-            elapsedSeconds = remainingSeconds
-        } else {
-            let plannedDurationSeconds = sessionPlannedDurationSeconds ?? duration(for: mode)
-            elapsedSeconds = max(0, plannedDurationSeconds - remainingSeconds)
-        }
+        let elapsedSeconds = activeSessionSeconds()
 
         let endedCountUp = isCountUp
         if elapsedSeconds < 5 * 60 {
