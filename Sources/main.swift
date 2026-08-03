@@ -533,7 +533,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         let todayRecords = records.filter { $0.date == today }
         if todayRecords.isEmpty {
-            let emptyItem = NSMenuItem(title: "暂无记录", action: nil, keyEquivalent: "")
+            let emptyItem = NSMenuItem(title: "今日暂无记录", action: nil, keyEquivalent: "")
             emptyItem.isEnabled = false
             menu.addItem(emptyItem)
         } else {
@@ -543,15 +543,51 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             for record in recentRecords {
                 addRecordMenuItem(record, to: menu)
             }
-
-            let allRecordsItem = NSMenuItem(title: "全部记录（共 \(todayRecords.count) 条）", action: nil, keyEquivalent: "")
-            let submenu = NSMenu()
-            for record in reversedRecords {
-                addRecordMenuItem(record, to: submenu)
-            }
-            allRecordsItem.submenu = submenu
-            menu.addItem(allRecordsItem)
         }
+
+        let todayRecordsItem = NSMenuItem(title: "今日全部记录（共 \(todayRecords.count) 条）", action: nil, keyEquivalent: "")
+        let todayRecordsMenu = NSMenu()
+        if todayRecords.isEmpty {
+            let emptyItem = NSMenuItem(title: "今日暂无记录", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            todayRecordsMenu.addItem(emptyItem)
+        } else {
+            for record in todayRecords.reversed() {
+                addRecordMenuItem(record, to: todayRecordsMenu)
+            }
+        }
+        todayRecordsItem.submenu = todayRecordsMenu
+        menu.addItem(todayRecordsItem)
+
+        let historicalRecords = records.filter { $0.date != today }
+        let historicalRecordsByDate = Dictionary(grouping: historicalRecords, by: \PomodoroRecord.date)
+        let historicalDates = historicalRecordsByDate.keys.sorted(by: >)
+        let historyItem = NSMenuItem(
+            title: "历史记录（共 \(historicalDates.count) 天 / \(historicalRecords.count) 条）",
+            action: nil,
+            keyEquivalent: ""
+        )
+        let historyMenu = NSMenu()
+        if historicalDates.isEmpty {
+            let emptyItem = NSMenuItem(title: "暂无历史记录", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            historyMenu.addItem(emptyItem)
+        } else {
+            for date in historicalDates {
+                guard let dateRecords = historicalRecordsByDate[date] else {
+                    continue
+                }
+                let dateItem = NSMenuItem(title: "\(date)（共 \(dateRecords.count) 条）", action: nil, keyEquivalent: "")
+                let dateMenu = NSMenu()
+                for record in dateRecords.reversed() {
+                    addRecordMenuItem(record, to: dateMenu)
+                }
+                dateItem.submenu = dateMenu
+                historyMenu.addItem(dateItem)
+            }
+        }
+        historyItem.submenu = historyMenu
+        menu.addItem(historyItem)
 
         let openRecordsItem = NSMenuItem(title: "打开记录文件...", action: #selector(openRecordsFile), keyEquivalent: "")
         openRecordsItem.target = self
