@@ -168,6 +168,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private let shortBreakDurationSeconds = 5 * 60
     private let longBreakDurationSeconds = 15 * 60
     private let collapsedRecordsLimit = 10
+    private let historicalDateLimit = 30
 
     private lazy var statusMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private lazy var startMenuItem = NSMenuItem(
@@ -192,6 +193,13 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             return nil
         }
         return NSImage(contentsOf: url)
+    }()
+    private lazy var historyWeekdayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "EEE"
+        return formatter
     }()
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -562,6 +570,8 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         let historicalRecords = records.filter { $0.date != today }
         let historicalRecordsByDate = Dictionary(grouping: historicalRecords, by: \PomodoroRecord.date)
         let historicalDates = historicalRecordsByDate.keys.sorted(by: >)
+        let visibleHistoricalDates = historicalDates.prefix(historicalDateLimit)
+        let olderDateCount = historicalDates.count - visibleHistoricalDates.count
         let historyItem = NSMenuItem(
             title: "历史记录（共 \(historicalDates.count) 天 / \(historicalRecords.count) 条）",
             action: nil,
@@ -573,17 +583,35 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             emptyItem.isEnabled = false
             historyMenu.addItem(emptyItem)
         } else {
-            for date in historicalDates {
+            for date in visibleHistoricalDates {
                 guard let dateRecords = historicalRecordsByDate[date] else {
                     continue
                 }
-                let dateItem = NSMenuItem(title: "\(date)（共 \(dateRecords.count) 条）", action: nil, keyEquivalent: "")
+                let weekday = recordDateFormatter.date(from: date)
+                    .map { historyWeekdayFormatter.string(from: $0) }
+                let weekdaySuffix = weekday.map { " \($0)" } ?? ""
+                let dateItem = NSMenuItem(
+                    title: "\(date)\(weekdaySuffix)（共 \(dateRecords.count) 条）",
+                    action: nil,
+                    keyEquivalent: ""
+                )
                 let dateMenu = NSMenu()
                 for record in dateRecords.reversed() {
                     addRecordMenuItem(record, to: dateMenu)
                 }
                 dateItem.submenu = dateMenu
                 historyMenu.addItem(dateItem)
+            }
+
+            if olderDateCount > 0 {
+                historyMenu.addItem(.separator())
+                let olderRecordsItem = NSMenuItem(
+                    title: "更早记录（共 \(olderDateCount) 天）...",
+                    action: #selector(openRecordsFile),
+                    keyEquivalent: ""
+                )
+                olderRecordsItem.target = self
+                historyMenu.addItem(olderRecordsItem)
             }
         }
         historyItem.submenu = historyMenu
