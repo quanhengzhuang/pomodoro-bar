@@ -272,9 +272,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
 
         if hasActiveSession && !isCountUp {
-            let extendItem = NSMenuItem(title: "延长时间...", action: #selector(extendActiveCountdown), keyEquivalent: "")
-            extendItem.target = self
-            menu.addItem(extendItem)
+            let adjustTimeItem = NSMenuItem(title: "调整时间...", action: #selector(adjustActiveCountdown), keyEquivalent: "")
+            adjustTimeItem.target = self
+            menu.addItem(adjustTimeItem)
         }
 
         let noteItem = NSMenuItem(title: sessionNote.isEmpty ? "设置本段备注..." : "修改本段备注...", action: #selector(editSessionNote), keyEquivalent: "e")
@@ -983,43 +983,48 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         startMode(.longBreak)
     }
 
-    @objc private func extendActiveCountdown() {
+    @objc private func adjustActiveCountdown() {
         guard hasActiveSession && !isCountUp else {
             return
         }
 
         let alert = makeAlert()
-        alert.messageText = "延长时间"
-        alert.informativeText = "请输入要增加的分钟数（1 到 180）。"
-        alert.addButton(withTitle: "增加")
+        alert.messageText = "调整时间"
+        alert.informativeText = "请输入调整的分钟数（-180 到 180；正数增加，负数缩短，不能为 0）。"
+        alert.addButton(withTitle: "调整")
         alert.addButton(withTitle: "取消")
 
         let input = NSTextField(frame: NSRect(x: 0, y: 0, width: 120, height: 24))
         input.stringValue = "5"
-        input.placeholderString = "5"
+        input.placeholderString = "5 或 -5"
         alert.accessoryView = input
 
         NSApp.activate(ignoringOtherApps: true)
         if alert.runModal() == .alertFirstButtonReturn {
             let trimmed = input.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard let minutes = Int(trimmed), (1...180).contains(minutes) else {
-                showInvalidExtensionDurationAlert()
+            guard let minutes = Int(trimmed), minutes != 0, (-180...180).contains(minutes) else {
+                showInvalidAdjustmentDurationAlert()
                 return
             }
 
-            let addedSeconds = minutes * 60
-            remainingSeconds += addedSeconds
+            let adjustmentSeconds = minutes * 60
+            guard remainingSeconds + adjustmentSeconds > 0 else {
+                showInvalidAdjustmentDurationAlert()
+                return
+            }
+
+            remainingSeconds += adjustmentSeconds
             let plannedDurationSeconds = sessionPlannedDurationSeconds ?? duration(for: mode)
-            sessionPlannedDurationSeconds = plannedDurationSeconds + addedSeconds
+            sessionPlannedDurationSeconds = plannedDurationSeconds + adjustmentSeconds
             updateStatusTitle()
             rebuildMenu()
         }
     }
 
-    private func showInvalidExtensionDurationAlert() {
+    private func showInvalidAdjustmentDurationAlert() {
         let alert = makeAlert()
-        alert.messageText = "增加时长无效"
-        alert.informativeText = "请输入 1 到 180 之间的整数分钟。"
+        alert.messageText = "调整时长无效"
+        alert.informativeText = "请输入 -180 到 180 之间的非零整数分钟，并确保调整后仍有剩余时间。"
         alert.addButton(withTitle: "好")
         NSApp.activate(ignoringOtherApps: true)
         alert.runModal()
