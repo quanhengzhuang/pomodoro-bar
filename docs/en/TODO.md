@@ -17,3 +17,5 @@
 - [x] Label count-up sessions as “Timer” and use an orange icon for their historical records.
 - [x] When ending a session shorter than 5 minutes, show a confirmation alert with confirm and cancel instead of ending immediately.
 - [x] Rename “Today Completed” in the menu to “Time Inside Pomodoro”.
+- [ ] Allow negative values when extending time to shorten the countdown, and rename the menu item accordingly.
+- [x] Only skip recording sessions shorter than 3 minutes instead of 5 minutes.
