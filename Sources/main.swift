@@ -167,6 +167,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     private let shortBreakDurationSeconds = 5 * 60
     private let longBreakDurationSeconds = 15 * 60
+    private let minimumRecordedSessionSeconds = 3 * 60
     private let collapsedRecordsLimit = 10
     private let historicalDateLimit = 30
 
@@ -913,10 +914,10 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         let elapsedSeconds = activeSessionSeconds()
 
         let endedCountUp = isCountUp
-        if elapsedSeconds < 5 * 60 {
+        if elapsedSeconds < minimumRecordedSessionSeconds {
             let alert = makeAlert()
             alert.messageText = "结束本段？"
-            alert.informativeText = "计时时长不足 5 分钟，结束后不会写入记录。"
+            alert.informativeText = "计时时长不足 \(minimumRecordedSessionSeconds / 60) 分钟，结束后不会写入记录。"
             alert.addButton(withTitle: "结束")
             alert.addButton(withTitle: "取消")
             NSApp.activate(ignoringOtherApps: true)
@@ -925,7 +926,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             }
         }
 
-        if elapsedSeconds >= 5 * 60 {
+        if elapsedSeconds >= minimumRecordedSessionSeconds {
             addTimerRecord(
                 type: endedCountUp ? "count_up" : mode.recordType,
                 durationSeconds: elapsedSeconds
