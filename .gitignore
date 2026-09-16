@@ -5,3 +5,6 @@ ModuleCache/
 *.swiftmodule
 *.swiftdoc
 *.swiftsourceinfo
+DerivedData/
+xcuserdata/
+*.xcuserstate

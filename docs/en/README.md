@@ -45,6 +45,18 @@ Build and run the latest version while exiting an older running instance:
 
 An unfinished timer in the old instance is discarded; saved records are unaffected.
 
+## iOS Daily Guidance
+
+The iOS viewer project is located at:
+
+```text
+iOS/DailyGuidance/DailyGuidance.xcodeproj
+```
+
+Open the project in the full Xcode application, select the `DailyGuidance` target, choose your Apple Developer Team under Signing & Capabilities, and run it in a simulator or on an iPhone.
+
+On first launch, use the system file picker to open `iCloud Drive/PomodoroBar/daily-guidance.json`. The app remembers access and automatically reads today's guidance on later launches; the toolbar can refresh or select a different file. The iOS app is read-only and does not modify existing data.
+
 ## Record Format
 
 ```json

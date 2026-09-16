@@ -45,6 +45,18 @@ dist/PomodoroBar.app
 
 旧实例中尚未结束的计时会被放弃，已保存的记录不受影响。
 
+## iOS 今日指引
+
+iOS 查看器工程位于：
+
+```text
+iOS/DailyGuidance/DailyGuidance.xcodeproj
+```
+
+使用完整 Xcode 打开工程，选择 `DailyGuidance` target，在 Signing & Capabilities 中选择自己的 Apple Developer Team 后即可在模拟器或 iPhone 上运行。
+
+首次打开 App 时，在系统文件选择器中进入 `iCloud Drive/PomodoroBar/` 并选择 `daily-guidance.json`。App 会记住文件访问权限，之后自动读取当天指引；也可以通过顶部按钮刷新或重新选择文件。iOS App 只读该文件，不会修改已有数据。
+
 ## 记录格式
 
 ```json
