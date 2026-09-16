@@ -19,7 +19,7 @@ A lightweight macOS menu bar Pomodoro timer.
 - Use a free-running timer from `00:00`, or follow a Pomodoro rhythm with 25-minute focus and 5/15-minute breaks
 - Control everything from the menu bar: start, pause, resume, extend, or end while keeping progress visible
 - Press Space while the menu is open to start, pause, or resume instantly
-- Set “Daily Guidance” with multiple lines, lists, and bold text, then review it whenever the menu is open
+- Set “Daily Guidance” as multiline plain text with automatic wrapping, then review it whenever the menu is open
 - Add a note to the current session and keep it with the record
 - Receive a macOS notification when a focus or break session finishes
 - Review today’s sessions with their time range, active duration, and notes
@@ -82,4 +82,4 @@ When iCloud Drive is unavailable or unwritable, the app falls back to:
 ~/.pomodoro-status-bar/
 ```
 
-Existing local records are deduplicated and merged with iCloud records without deleting the original local file. `daily-guidance.json` stores the original Markdown text by date and supports unordered `-` / `*` lists, ordered `1.` lists, and `**bold**` text.
+Existing local records are deduplicated and merged with iCloud records without deleting the original local file. `daily-guidance.json` stores the plain-text Daily Guidance content by date.

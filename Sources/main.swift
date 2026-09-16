@@ -168,7 +168,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private let recordsFileName = "records.json"
     private let dailyGuidanceFileName = "daily-guidance.json"
     private let iCloudDataDirectoryName = "PomodoroBar"
-    private let dailyGuidanceMenuWidth: CGFloat = 320
+    private let dailyGuidanceMenuWidth: CGFloat = 520
 
     private let shortBreakDurationSeconds = 5 * 60
     private let longBreakDurationSeconds = 15 * 60
@@ -552,7 +552,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         let guidance = dailyGuidanceByDate[todayDateKey] ?? ""
         if !guidance.isEmpty {
             let guidanceItem = NSMenuItem()
-            guidanceItem.view = makeDailyGuidanceMenuView(markdown: guidance)
+            guidanceItem.view = makeDailyGuidanceMenuView(text: guidance)
             guidanceItem.isEnabled = false
             menu.addItem(guidanceItem)
         }
@@ -566,83 +566,50 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         menu.addItem(editItem)
     }
 
-    private func makeDailyGuidanceMenuView(markdown: String) -> NSView {
+    private func makeDailyGuidanceMenuView(text: String) -> NSView {
         let horizontalPadding: CGFloat = 16
         let verticalPadding: CGFloat = 8
         let contentWidth = dailyGuidanceMenuWidth - horizontalPadding * 2
-        let guidance = attributedDailyGuidance(markdown)
-        let measuredBody = guidance.boundingRect(
-            with: NSSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude),
-            options: [.usesLineFragmentOrigin, .usesFontLeading]
-        )
-        let bodyHeight = max(ceil(measuredBody.height) + 2, NSFont.systemFontSize + 3)
-        let viewHeight = verticalPadding * 2 + bodyHeight
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: dailyGuidanceMenuWidth, height: viewHeight))
-
-        let body = NSTextField(labelWithAttributedString: guidance)
-        body.maximumNumberOfLines = 0
-        body.lineBreakMode = .byWordWrapping
-        body.preferredMaxLayoutWidth = contentWidth
-        body.cell?.wraps = true
-        body.frame = NSRect(
+        let body = NSTextView(frame: NSRect(
             x: horizontalPadding,
             y: verticalPadding,
             width: contentWidth,
-            height: bodyHeight
-        )
-        container.addSubview(body)
-
-        return container
-    }
-
-    private func attributedDailyGuidance(_ markdown: String) -> NSAttributedString {
+            height: 1
+        ))
         let baseFont = NSFont.menuFont(ofSize: 0)
-        let boldFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .semibold)
-        let baseAttributes: [NSAttributedString.Key: Any] = [
+        let attributes: [NSAttributedString.Key: Any] = [
             .font: baseFont,
-            .foregroundColor: dailyGuidanceColor
+            .foregroundColor: dailyGuidanceColor,
+            .obliqueness: 0.16
         ]
-        let boldAttributes: [NSAttributedString.Key: Any] = [
-            .font: boldFont,
-            .foregroundColor: dailyGuidanceColor
-        ]
-        let result = NSMutableAttributedString()
-        let lines = markdown.components(separatedBy: .newlines)
+        body.isEditable = false
+        body.isSelectable = false
+        body.isRichText = false
+        body.drawsBackground = false
+        body.textContainerInset = .zero
+        body.isHorizontallyResizable = false
+        body.isVerticallyResizable = true
+        body.textContainer?.lineFragmentPadding = 0
+        body.textContainer?.widthTracksTextView = true
+        body.textContainer?.containerSize = NSSize(
+            width: contentWidth,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        body.textStorage?.setAttributedString(NSAttributedString(string: text, attributes: attributes))
 
-        for (index, line) in lines.enumerated() {
-            let lineStart = result.length
-            let parts = dailyGuidanceLineParts(line)
-            if !parts.prefix.isEmpty {
-                result.append(NSAttributedString(string: parts.prefix, attributes: baseAttributes))
-            }
-            appendInlineMarkdown(
-                parts.content,
-                to: result,
-                baseAttributes: baseAttributes,
-                boldAttributes: boldAttributes
-            )
-
-            if index < lines.count - 1 {
-                result.append(NSAttributedString(string: "\n", attributes: baseAttributes))
-            }
-
-            let paragraphStyle = NSMutableParagraphStyle()
-            paragraphStyle.lineBreakMode = .byWordWrapping
-            paragraphStyle.paragraphSpacing = index < lines.count - 1 ? 2 : 0
-            if !parts.prefix.isEmpty {
-                paragraphStyle.firstLineHeadIndent = 0
-                paragraphStyle.headIndent = ceil(
-                    (parts.prefix as NSString).size(withAttributes: baseAttributes).width
-                )
-            }
-            result.addAttribute(
-                .paragraphStyle,
-                value: paragraphStyle,
-                range: NSRange(location: lineStart, length: result.length - lineStart)
-            )
+        let bodyHeight: CGFloat
+        if let textContainer = body.textContainer, let layoutManager = body.layoutManager {
+            layoutManager.ensureLayout(for: textContainer)
+            bodyHeight = max(ceil(layoutManager.usedRect(for: textContainer).height) + 2, baseFont.pointSize + 3)
+        } else {
+            bodyHeight = baseFont.pointSize + 3
         }
+        body.frame.size.height = bodyHeight
 
-        return result
+        let viewHeight = verticalPadding * 2 + bodyHeight
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: dailyGuidanceMenuWidth, height: viewHeight))
+        container.addSubview(body)
+        return container
     }
 
     private var dailyGuidanceColor: NSColor {
@@ -651,49 +618,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             return NSColor(calibratedRed: 0.98, green: 0.73, blue: 0.22, alpha: 1)
         }
         return NSColor(calibratedRed: 0.58, green: 0.39, blue: 0.05, alpha: 1)
-    }
-
-    private func dailyGuidanceLineParts(_ line: String) -> (prefix: String, content: String) {
-        if line.hasPrefix("- ") || line.hasPrefix("* ") {
-            return ("• ", String(line.dropFirst(2)))
-        }
-
-        if let separator = line.range(of: ". ") {
-            let number = line[..<separator.lowerBound]
-            if !number.isEmpty && number.allSatisfy(\.isNumber) {
-                return ("\(number). ", String(line[separator.upperBound...]))
-            }
-        }
-
-        return ("", line)
-    }
-
-    private func appendInlineMarkdown(
-        _ text: String,
-        to result: NSMutableAttributedString,
-        baseAttributes: [NSAttributedString.Key: Any],
-        boldAttributes: [NSAttributedString.Key: Any]
-    ) {
-        var remaining = text[...]
-
-        while let opening = remaining.range(of: "**") {
-            let afterOpening = remaining[opening.upperBound...]
-            guard let closing = afterOpening.range(of: "**") else {
-                break
-            }
-
-            result.append(NSAttributedString(
-                string: String(remaining[..<opening.lowerBound]),
-                attributes: baseAttributes
-            ))
-            result.append(NSAttributedString(
-                string: String(afterOpening[..<closing.lowerBound]),
-                attributes: boldAttributes
-            ))
-            remaining = afterOpening[closing.upperBound...]
-        }
-
-        result.append(NSAttributedString(string: String(remaining), attributes: baseAttributes))
     }
 
     private func loadDailyGuidance() {
@@ -1324,7 +1248,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     @objc private func editDailyGuidance() {
         let alert = makeAlert()
         alert.messageText = "今日指引"
-        alert.informativeText = "支持 - 或 1. 列表和 **加粗**；保存空内容可清除。"
+        alert.informativeText = "支持换行；保存空内容可清除。"
         alert.addButton(withTitle: "保存")
         alert.addButton(withTitle: "取消")
 
