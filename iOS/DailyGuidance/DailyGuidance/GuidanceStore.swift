@@ -27,17 +27,19 @@ final class GuidanceStore: ObservableObject {
 
     func selectFile(_ url: URL) {
         do {
-            let bookmark = try url.bookmarkData(
-                options: .minimalBookmark,
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )
+            let bookmark = try withSecurityScopedAccess(to: url) {
+                try url.bookmarkData(
+                    options: .minimalBookmark,
+                    includingResourceValuesForKeys: nil,
+                    relativeTo: nil
+                )
+            }
             UserDefaults.standard.set(bookmark, forKey: bookmarkStorageKey)
             selectedFileURL = url
             selectedFileName = url.lastPathComponent
             refresh()
         } catch {
-            state = .error("无法保存文件访问权限，请重新选择数据文件。")
+            state = .error("无法保存文件访问权限：\(error.localizedDescription)")
         }
     }
 
@@ -48,15 +50,11 @@ final class GuidanceStore: ObservableObject {
         }
 
         state = .loading
-        let didStartAccessing = selectedFileURL.startAccessingSecurityScopedResource()
-        defer {
-            if didStartAccessing {
-                selectedFileURL.stopAccessingSecurityScopedResource()
-            }
-        }
 
         do {
-            let data = try Data(contentsOf: selectedFileURL)
+            let data = try withSecurityScopedAccess(to: selectedFileURL) {
+                try Data(contentsOf: selectedFileURL)
+            }
             let guidanceByDate = try JSONDecoder().decode([String: String].self, from: data)
             let guidance = guidanceByDate[todayDateKey] ?? ""
             state = guidance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -93,11 +91,13 @@ final class GuidanceStore: ObservableObject {
             selectedFileName = url.lastPathComponent
 
             if isStale {
-                let renewedBookmark = try url.bookmarkData(
-                    options: .minimalBookmark,
-                    includingResourceValuesForKeys: nil,
-                    relativeTo: nil
-                )
+                let renewedBookmark = try withSecurityScopedAccess(to: url) {
+                    try url.bookmarkData(
+                        options: .minimalBookmark,
+                        includingResourceValuesForKeys: nil,
+                        relativeTo: nil
+                    )
+                }
                 UserDefaults.standard.set(renewedBookmark, forKey: bookmarkStorageKey)
             }
             refresh()
@@ -105,6 +105,19 @@ final class GuidanceStore: ObservableObject {
             forgetSelectedFile()
             state = .error("之前选择的数据文件已无法访问，请重新选择。")
         }
+    }
+
+    private func withSecurityScopedAccess<T>(
+        to url: URL,
+        operation: () throws -> T
+    ) rethrows -> T {
+        let didStartAccessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if didStartAccessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        return try operation()
     }
 
     private var todayDateKey: String {
