@@ -583,7 +583,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         let header = NSTextField(labelWithString: "今日指引")
         header.font = .systemFont(ofSize: 11, weight: .semibold)
-        header.textColor = .secondaryLabelColor
+        header.textColor = dailyGuidanceColor
         header.frame = NSRect(
             x: horizontalPadding,
             y: verticalPadding + bodyHeight + contentSpacing,
@@ -613,11 +613,11 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         let boldFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .semibold)
         let baseAttributes: [NSAttributedString.Key: Any] = [
             .font: baseFont,
-            .foregroundColor: NSColor.labelColor
+            .foregroundColor: dailyGuidanceColor
         ]
         let boldAttributes: [NSAttributedString.Key: Any] = [
             .font: boldFont,
-            .foregroundColor: NSColor.labelColor
+            .foregroundColor: dailyGuidanceColor
         ]
         let result = NSMutableAttributedString()
         let lines = markdown.components(separatedBy: .newlines)
@@ -656,6 +656,14 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
 
         return result
+    }
+
+    private var dailyGuidanceColor: NSColor {
+        let appearance = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])
+        if appearance == .darkAqua {
+            return NSColor(calibratedRed: 0.98, green: 0.73, blue: 0.22, alpha: 1)
+        }
+        return NSColor(calibratedRed: 0.58, green: 0.39, blue: 0.05, alpha: 1)
     }
 
     private func dailyGuidanceLineParts(_ line: String) -> (prefix: String, content: String) {
