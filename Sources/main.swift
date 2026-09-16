@@ -175,6 +175,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private let minimumRecordedSessionSeconds = 3 * 60
     private let collapsedRecordsLimit = 10
     private let historicalDateLimit = 30
+    private let dailyGuidanceHistoryDayLimit = 30
 
     private lazy var statusMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private lazy var startMenuItem = NSMenuItem(
@@ -769,9 +770,68 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         historyItem.submenu = historyMenu
         menu.addItem(historyItem)
 
+        addDailyGuidanceHistoryMenuItem()
+
         let openRecordsItem = NSMenuItem(title: "打开记录文件...", action: #selector(openRecordsFile), keyEquivalent: "")
         openRecordsItem.target = self
         menu.addItem(openRecordsItem)
+    }
+
+    private func addDailyGuidanceHistoryMenuItem() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let today = calendar.startOfDay(for: Date())
+        let earliestVisibleDate = calendar.date(
+            byAdding: .day,
+            value: -(dailyGuidanceHistoryDayLimit - 1),
+            to: today
+        ) ?? today
+
+        let entries: [(dateKey: String, date: Date, text: String)] = dailyGuidanceByDate.compactMap { dateKey, text in
+            let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedText.isEmpty, let date = recordDateFormatter.date(from: dateKey) else {
+                return nil
+            }
+
+            let startOfDate = calendar.startOfDay(for: date)
+            guard startOfDate >= earliestVisibleDate, startOfDate <= today else {
+                return nil
+            }
+            return (dateKey, startOfDate, text)
+        }
+        .sorted { $0.date > $1.date }
+
+        let historyItem = NSMenuItem(
+            title: "今日指引记录（近 \(dailyGuidanceHistoryDayLimit) 天）",
+            action: nil,
+            keyEquivalent: ""
+        )
+        let historyMenu = NSMenu()
+
+        if entries.isEmpty {
+            let emptyItem = NSMenuItem(title: "暂无今日指引记录", action: nil, keyEquivalent: "")
+            emptyItem.isEnabled = false
+            historyMenu.addItem(emptyItem)
+        } else {
+            for entry in entries {
+                let weekday = historyWeekdayFormatter.string(from: entry.date)
+                let dateItem = NSMenuItem(
+                    title: "\(entry.dateKey) \(weekday)",
+                    action: nil,
+                    keyEquivalent: ""
+                )
+                let dateMenu = NSMenu()
+                let guidanceItem = NSMenuItem()
+                guidanceItem.view = makeDailyGuidanceMenuView(text: entry.text)
+                guidanceItem.isEnabled = false
+                dateMenu.addItem(guidanceItem)
+                dateItem.submenu = dateMenu
+                historyMenu.addItem(dateItem)
+            }
+        }
+
+        historyItem.submenu = historyMenu
+        menu.addItem(historyItem)
     }
 
     private func recordMenuTitle(dotColor: NSColor, text: String) -> NSAttributedString {
