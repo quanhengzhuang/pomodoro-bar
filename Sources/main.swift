@@ -569,8 +569,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private func makeDailyGuidanceMenuView(markdown: String) -> NSView {
         let horizontalPadding: CGFloat = 16
         let verticalPadding: CGFloat = 8
-        let headerHeight: CGFloat = 14
-        let contentSpacing: CGFloat = 4
         let contentWidth = dailyGuidanceMenuWidth - horizontalPadding * 2
         let guidance = attributedDailyGuidance(markdown)
         let measuredBody = guidance.boundingRect(
@@ -578,19 +576,8 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             options: [.usesLineFragmentOrigin, .usesFontLeading]
         )
         let bodyHeight = max(ceil(measuredBody.height) + 2, NSFont.systemFontSize + 3)
-        let viewHeight = verticalPadding * 2 + headerHeight + contentSpacing + bodyHeight
+        let viewHeight = verticalPadding * 2 + bodyHeight
         let container = NSView(frame: NSRect(x: 0, y: 0, width: dailyGuidanceMenuWidth, height: viewHeight))
-
-        let header = NSTextField(labelWithString: "今日指引")
-        header.font = .systemFont(ofSize: 11, weight: .semibold)
-        header.textColor = dailyGuidanceColor
-        header.frame = NSRect(
-            x: horizontalPadding,
-            y: verticalPadding + bodyHeight + contentSpacing,
-            width: contentWidth,
-            height: headerHeight
-        )
-        container.addSubview(header)
 
         let body = NSTextField(labelWithAttributedString: guidance)
         body.maximumNumberOfLines = 0
