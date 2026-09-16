@@ -15,8 +15,8 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "A50000000000000000000001"
-               BuildableName = "DailyGuidance.app"
-               BlueprintName = "DailyGuidance"
+               BuildableName = "PomodoroBar.app"
+               BlueprintName = "PomodoroBar"
                ReferencedContainer = "container:DailyGuidance.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -42,8 +42,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A50000000000000000000001"
-            BuildableName = "DailyGuidance.app"
-            BlueprintName = "DailyGuidance"
+            BuildableName = "PomodoroBar.app"
+            BlueprintName = "PomodoroBar"
             ReferencedContainer = "container:DailyGuidance.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -58,8 +58,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "A50000000000000000000001"
-            BuildableName = "DailyGuidance.app"
-            BlueprintName = "DailyGuidance"
+            BuildableName = "PomodoroBar.app"
+            BlueprintName = "PomodoroBar"
             ReferencedContainer = "container:DailyGuidance.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

@@ -45,17 +45,19 @@ dist/PomodoroBar.app
 
 旧实例中尚未结束的计时会被放弃，已保存的记录不受影响。
 
-## iOS 今日指引
+## iOS App 与灵动岛
 
-iOS 查看器工程位于：
+iOS App 工程位于：
 
 ```text
 iOS/DailyGuidance/DailyGuidance.xcodeproj
 ```
 
-使用完整 Xcode 打开工程，选择 `DailyGuidance` target，在 Signing & Capabilities 中选择自己的 Apple Developer Team 后即可在模拟器或 iPhone 上运行。
+使用完整 Xcode 打开工程，选择 `PomodoroBar` target，在 Signing & Capabilities 中选择自己的 Apple Developer Team 后即可在模拟器或 iPhone 上运行。App 最低支持 iOS 16.1。
 
-首次打开 App 时，在系统文件选择器中进入 `iCloud Drive/PomodoroBar/` 并选择 `daily-guidance.json`。App 会记住文件访问权限，之后自动读取当天指引；也可以通过顶部按钮刷新或重新选择文件。iOS App 只读该文件，不会修改已有数据。
+iOS 版支持自由计时、25 分钟专注、5/15 分钟休息，以及暂停、继续、调整时长、备注和最近记录。开始计时后会创建实时活动，在锁定屏幕和支持的 iPhone 灵动岛显示剩余或已用时间；请允许通知，并确认系统“设置 > Pomodoro Bar > 实时活动”已开启。
+
+右上角的引号按钮保留“今日指引”查看功能。首次使用时，在系统文件选择器中进入 `iCloud Drive/PomodoroBar/` 并选择 `daily-guidance.json`；App 只读该文件。iOS 计时记录保存在 App 自己的沙盒中，不覆盖或删除 Mac 端数据。
 
 ## 记录格式
 
