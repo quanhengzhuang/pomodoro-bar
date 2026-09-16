@@ -38,7 +38,7 @@ enum PomodoroMode: String {
     }
 }
 
-struct PomodoroRecord: Codable {
+struct PomodoroRecord: Codable, Hashable {
     let startedAt: String
     let endedAt: String
     let date: String
@@ -142,7 +142,7 @@ struct PomodoroRecord: Codable {
     }
 }
 
-final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificationCenterDelegate {
+final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificationCenterDelegate, NSMenuDelegate {
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let menu = NSMenu()
 
@@ -159,11 +159,16 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private var sessionPausedSeconds = 0
     private var sessionNote = ""
     private var records: [PomodoroRecord] = []
+    private var dailyGuidanceByDate: [String: String] = [:]
+    private var unreadableICloudFileNames = Set<String>()
     private let focusDurationMinutes = 25
     private let recordsStorageKey = "pomodoro.records"
-    private let recordsDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
+    private let localDataDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".pomodoro-status-bar", isDirectory: true)
     private let recordsFileName = "records.json"
+    private let dailyGuidanceFileName = "daily-guidance.json"
+    private let iCloudDataDirectoryName = "PomodoroBar"
+    private let dailyGuidanceMenuWidth: CGFloat = 320
 
     private let shortBreakDurationSeconds = 5 * 60
     private let longBreakDurationSeconds = 15 * 60
@@ -209,6 +214,8 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         configureApplicationIcon()
         configureNotifications()
         loadRecords()
+        loadDailyGuidance()
+        synchronizeDailyGuidanceToICloudIfNeeded()
         remainingSeconds = duration(for: .focus)
         configureStatusItem()
         rebuildMenu()
@@ -245,7 +252,15 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         statusItem.autosaveName = "local.codex.PomodoroStatusBar.statusItem"
         statusItem.button?.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
         statusItem.button?.toolTip = "番茄计时"
+        menu.delegate = self
         statusItem.menu = menu
+    }
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        refreshRecordsFromDataFiles()
+        loadDailyGuidance()
+        synchronizeFallbackDataToICloudIfNeeded()
+        rebuildMenu()
     }
 
     private func rebuildMenu() {
@@ -253,6 +268,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         statusMenuItem.isEnabled = false
         menu.addItem(statusMenuItem)
+        menu.addItem(.separator())
+
+        addDailyGuidanceMenuItems()
         menu.addItem(.separator())
 
         if hasActiveSession {
@@ -530,6 +548,220 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         statusMenuItem.title = "\(timerTitle) · \(state) · \(String(format: "%02d:%02d", minutes, seconds))\(noteSuffix)"
     }
 
+    private func addDailyGuidanceMenuItems() {
+        let guidance = dailyGuidanceByDate[todayDateKey] ?? ""
+        if !guidance.isEmpty {
+            let guidanceItem = NSMenuItem()
+            guidanceItem.view = makeDailyGuidanceMenuView(markdown: guidance)
+            guidanceItem.isEnabled = false
+            menu.addItem(guidanceItem)
+        }
+
+        let editItem = NSMenuItem(
+            title: guidance.isEmpty ? "设置今日指引..." : "修改今日指引...",
+            action: #selector(editDailyGuidance),
+            keyEquivalent: "g"
+        )
+        editItem.target = self
+        menu.addItem(editItem)
+    }
+
+    private func makeDailyGuidanceMenuView(markdown: String) -> NSView {
+        let horizontalPadding: CGFloat = 16
+        let verticalPadding: CGFloat = 8
+        let headerHeight: CGFloat = 14
+        let contentSpacing: CGFloat = 4
+        let contentWidth = dailyGuidanceMenuWidth - horizontalPadding * 2
+        let guidance = attributedDailyGuidance(markdown)
+        let measuredBody = guidance.boundingRect(
+            with: NSSize(width: contentWidth, height: CGFloat.greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading]
+        )
+        let bodyHeight = max(ceil(measuredBody.height) + 2, NSFont.systemFontSize + 3)
+        let viewHeight = verticalPadding * 2 + headerHeight + contentSpacing + bodyHeight
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: dailyGuidanceMenuWidth, height: viewHeight))
+
+        let header = NSTextField(labelWithString: "今日指引")
+        header.font = .systemFont(ofSize: 11, weight: .semibold)
+        header.textColor = .secondaryLabelColor
+        header.frame = NSRect(
+            x: horizontalPadding,
+            y: verticalPadding + bodyHeight + contentSpacing,
+            width: contentWidth,
+            height: headerHeight
+        )
+        container.addSubview(header)
+
+        let body = NSTextField(labelWithAttributedString: guidance)
+        body.maximumNumberOfLines = 0
+        body.lineBreakMode = .byWordWrapping
+        body.preferredMaxLayoutWidth = contentWidth
+        body.cell?.wraps = true
+        body.frame = NSRect(
+            x: horizontalPadding,
+            y: verticalPadding,
+            width: contentWidth,
+            height: bodyHeight
+        )
+        container.addSubview(body)
+
+        return container
+    }
+
+    private func attributedDailyGuidance(_ markdown: String) -> NSAttributedString {
+        let baseFont = NSFont.menuFont(ofSize: 0)
+        let boldFont = NSFont.systemFont(ofSize: baseFont.pointSize, weight: .semibold)
+        let baseAttributes: [NSAttributedString.Key: Any] = [
+            .font: baseFont,
+            .foregroundColor: NSColor.labelColor
+        ]
+        let boldAttributes: [NSAttributedString.Key: Any] = [
+            .font: boldFont,
+            .foregroundColor: NSColor.labelColor
+        ]
+        let result = NSMutableAttributedString()
+        let lines = markdown.components(separatedBy: .newlines)
+
+        for (index, line) in lines.enumerated() {
+            let lineStart = result.length
+            let parts = dailyGuidanceLineParts(line)
+            if !parts.prefix.isEmpty {
+                result.append(NSAttributedString(string: parts.prefix, attributes: baseAttributes))
+            }
+            appendInlineMarkdown(
+                parts.content,
+                to: result,
+                baseAttributes: baseAttributes,
+                boldAttributes: boldAttributes
+            )
+
+            if index < lines.count - 1 {
+                result.append(NSAttributedString(string: "\n", attributes: baseAttributes))
+            }
+
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.lineBreakMode = .byWordWrapping
+            paragraphStyle.paragraphSpacing = index < lines.count - 1 ? 2 : 0
+            if !parts.prefix.isEmpty {
+                paragraphStyle.firstLineHeadIndent = 0
+                paragraphStyle.headIndent = ceil(
+                    (parts.prefix as NSString).size(withAttributes: baseAttributes).width
+                )
+            }
+            result.addAttribute(
+                .paragraphStyle,
+                value: paragraphStyle,
+                range: NSRange(location: lineStart, length: result.length - lineStart)
+            )
+        }
+
+        return result
+    }
+
+    private func dailyGuidanceLineParts(_ line: String) -> (prefix: String, content: String) {
+        if line.hasPrefix("- ") || line.hasPrefix("* ") {
+            return ("• ", String(line.dropFirst(2)))
+        }
+
+        if let separator = line.range(of: ". ") {
+            let number = line[..<separator.lowerBound]
+            if !number.isEmpty && number.allSatisfy(\.isNumber) {
+                return ("\(number). ", String(line[separator.upperBound...]))
+            }
+        }
+
+        return ("", line)
+    }
+
+    private func appendInlineMarkdown(
+        _ text: String,
+        to result: NSMutableAttributedString,
+        baseAttributes: [NSAttributedString.Key: Any],
+        boldAttributes: [NSAttributedString.Key: Any]
+    ) {
+        var remaining = text[...]
+
+        while let opening = remaining.range(of: "**") {
+            let afterOpening = remaining[opening.upperBound...]
+            guard let closing = afterOpening.range(of: "**") else {
+                break
+            }
+
+            result.append(NSAttributedString(
+                string: String(remaining[..<opening.lowerBound]),
+                attributes: baseAttributes
+            ))
+            result.append(NSAttributedString(
+                string: String(afterOpening[..<closing.lowerBound]),
+                attributes: boldAttributes
+            ))
+            remaining = afterOpening[closing.upperBound...]
+        }
+
+        result.append(NSAttributedString(string: String(remaining), attributes: baseAttributes))
+    }
+
+    private func loadDailyGuidance() {
+        var storedGuidance: [(modifiedAt: Date, values: [String: String])] = []
+
+        for fileURL in readableDataFileURLs(named: dailyGuidanceFileName) {
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                continue
+            }
+
+            do {
+                let data = try Data(contentsOf: fileURL)
+                let values = try JSONDecoder().decode([String: String].self, from: data)
+                markICloudFileReadable(fileURL)
+                let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+                let modifiedAt = attributes?[.modificationDate] as? Date ?? .distantPast
+                storedGuidance.append((modifiedAt, values))
+            } catch {
+                markICloudFileUnreadable(fileURL)
+                NSLog("Could not load daily guidance from \(fileURL.path): \(error.localizedDescription)")
+            }
+        }
+
+        var mergedGuidance: [String: String] = [:]
+        for stored in storedGuidance.sorted(by: { $0.modifiedAt < $1.modifiedAt }) {
+            mergedGuidance.merge(stored.values) { _, newer in newer }
+        }
+        dailyGuidanceByDate = mergedGuidance
+    }
+
+    @discardableResult
+    private func saveDailyGuidance(_ values: [String: String]) -> URL? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+
+        do {
+            var data = try encoder.encode(values)
+            data.append(0x0A)
+            return writeDataFile(data, named: dailyGuidanceFileName)
+        } catch {
+            NSLog("Could not encode daily guidance: \(error.localizedDescription)")
+            return nil
+        }
+    }
+
+    private func synchronizeDailyGuidanceToICloudIfNeeded() {
+        guard shouldSynchronizeFallbackFileToICloud(named: dailyGuidanceFileName) else {
+            return
+        }
+        _ = saveDailyGuidance(dailyGuidanceByDate)
+    }
+
+    private func synchronizeFallbackDataToICloudIfNeeded() {
+        if shouldSynchronizeFallbackFileToICloud(named: recordsFileName) {
+            _ = saveRecords()
+        }
+        synchronizeDailyGuidanceToICloudIfNeeded()
+    }
+
+    private var todayDateKey: String {
+        recordDateFormatter.string(from: Date())
+    }
+
     private func addRecordsMenuItems() {
         let today = recordDateFormatter.string(from: Date())
         let insideItem = NSMenuItem(title: "番茄内时间：\(formattedPomodoroTimeToday())", action: nil, keyEquivalent: "")
@@ -697,25 +929,73 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     private func loadRecords() {
-        if let data = try? Data(contentsOf: recordsFileURL) {
-            records = (try? recordsDecoder.decode([PomodoroRecord].self, from: data)) ?? []
-            saveRecords()
+        var recordGroups = loadRecordGroupsFromDataFiles()
+
+        let legacyRecords = loadLegacyRecordsFromUserDefaults()
+        if let legacyRecords {
+            recordGroups.append(legacyRecords)
+        }
+
+        records = mergeRecordGroups(recordGroups)
+        guard !recordGroups.isEmpty else {
             return
         }
 
-        migrateRecordsFromUserDefaults()
+        if saveRecords() != nil, legacyRecords != nil {
+            UserDefaults.standard.removeObject(forKey: recordsStorageKey)
+        }
     }
 
-    private func saveRecords() {
-        do {
-            try FileManager.default.createDirectory(
-                at: recordsDirectoryURL,
-                withIntermediateDirectories: true
-            )
-            let data = Data(renderRecordsJSON().utf8)
-            try data.write(to: recordsFileURL, options: .atomic)
-        } catch {
-            NSLog("Could not save pomodoro records: \(error.localizedDescription)")
+    private func refreshRecordsFromDataFiles() {
+        let storedRecordGroups = loadRecordGroupsFromDataFiles()
+        guard !storedRecordGroups.isEmpty else {
+            return
+        }
+        records = mergeRecordGroups(storedRecordGroups + [records])
+    }
+
+    @discardableResult
+    private func saveRecords() -> URL? {
+        records = mergeRecordGroups(loadRecordGroupsFromDataFiles() + [records])
+        return writeDataFile(Data(renderRecordsJSON().utf8), named: recordsFileName)
+    }
+
+    private func loadRecordGroupsFromDataFiles() -> [[PomodoroRecord]] {
+        var recordGroups: [[PomodoroRecord]] = []
+
+        for fileURL in readableDataFileURLs(named: recordsFileName) {
+            guard FileManager.default.fileExists(atPath: fileURL.path) else {
+                continue
+            }
+
+            do {
+                let data = try Data(contentsOf: fileURL)
+                recordGroups.append(try recordsDecoder.decode([PomodoroRecord].self, from: data))
+                markICloudFileReadable(fileURL)
+            } catch {
+                markICloudFileUnreadable(fileURL)
+                NSLog("Could not load pomodoro records from \(fileURL.path): \(error.localizedDescription)")
+            }
+        }
+
+        return recordGroups
+    }
+
+    private func mergeRecordGroups(_ groups: [[PomodoroRecord]]) -> [PomodoroRecord] {
+        var seenRecords = Set<PomodoroRecord>()
+        var mergedRecords: [PomodoroRecord] = []
+
+        for group in groups {
+            for record in group where seenRecords.insert(record).inserted {
+                mergedRecords.append(record)
+            }
+        }
+
+        return mergedRecords.sorted {
+            if $0.endedAt == $1.endedAt {
+                return $0.startedAt < $1.startedAt
+            }
+            return $0.endedAt < $1.endedAt
         }
     }
 
@@ -827,21 +1107,111 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return pomodoroSeconds
     }
 
-    private func migrateRecordsFromUserDefaults() {
+    private func loadLegacyRecordsFromUserDefaults() -> [PomodoroRecord]? {
         guard let data = UserDefaults.standard.data(forKey: recordsStorageKey) else {
-            records = []
-            return
+            return nil
         }
-
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .deferredToDate
-        records = (try? decoder.decode([PomodoroRecord].self, from: data)) ?? []
-        saveRecords()
-        UserDefaults.standard.removeObject(forKey: recordsStorageKey)
+        return try? decoder.decode([PomodoroRecord].self, from: data)
     }
 
-    private var recordsFileURL: URL {
-        recordsDirectoryURL.appendingPathComponent(recordsFileName)
+    private var iCloudDriveDirectoryURL: URL {
+        FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
+    }
+
+    private var iCloudDataDirectoryURL: URL? {
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(
+            atPath: iCloudDriveDirectoryURL.path,
+            isDirectory: &isDirectory
+        ), isDirectory.boolValue else {
+            return nil
+        }
+
+        return iCloudDriveDirectoryURL
+            .appendingPathComponent(iCloudDataDirectoryName, isDirectory: true)
+    }
+
+    private func readableDataFileURLs(named fileName: String) -> [URL] {
+        var fileURLs = [localDataDirectoryURL.appendingPathComponent(fileName)]
+        if let iCloudDataDirectoryURL {
+            fileURLs.append(iCloudDataDirectoryURL.appendingPathComponent(fileName))
+        }
+        return fileURLs
+    }
+
+    private func isICloudDataFile(_ fileURL: URL) -> Bool {
+        guard let iCloudDataDirectoryURL else {
+            return false
+        }
+        return fileURL.deletingLastPathComponent().standardizedFileURL
+            == iCloudDataDirectoryURL.standardizedFileURL
+    }
+
+    private func markICloudFileReadable(_ fileURL: URL) {
+        if isICloudDataFile(fileURL) {
+            unreadableICloudFileNames.remove(fileURL.lastPathComponent)
+        }
+    }
+
+    private func markICloudFileUnreadable(_ fileURL: URL) {
+        if isICloudDataFile(fileURL) {
+            unreadableICloudFileNames.insert(fileURL.lastPathComponent)
+        }
+    }
+
+    private func writableDataFileURLs(named fileName: String) -> [URL] {
+        let localFileURL = localDataDirectoryURL.appendingPathComponent(fileName)
+        guard let iCloudDataDirectoryURL,
+              !unreadableICloudFileNames.contains(fileName) else {
+            return [localFileURL]
+        }
+
+        return [iCloudDataDirectoryURL.appendingPathComponent(fileName), localFileURL]
+    }
+
+    private func shouldSynchronizeFallbackFileToICloud(named fileName: String) -> Bool {
+        guard let iCloudDataDirectoryURL,
+              !unreadableICloudFileNames.contains(fileName) else {
+            return false
+        }
+
+        let localFileURL = localDataDirectoryURL.appendingPathComponent(fileName)
+        guard FileManager.default.fileExists(atPath: localFileURL.path) else {
+            return false
+        }
+
+        let iCloudFileURL = iCloudDataDirectoryURL.appendingPathComponent(fileName)
+        guard FileManager.default.fileExists(atPath: iCloudFileURL.path) else {
+            return true
+        }
+
+        return modificationDate(of: localFileURL) > modificationDate(of: iCloudFileURL)
+    }
+
+    private func modificationDate(of fileURL: URL) -> Date {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+        return attributes?[.modificationDate] as? Date ?? .distantPast
+    }
+
+    @discardableResult
+    private func writeDataFile(_ data: Data, named fileName: String) -> URL? {
+        for fileURL in writableDataFileURLs(named: fileName) {
+            do {
+                try FileManager.default.createDirectory(
+                    at: fileURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try data.write(to: fileURL, options: .atomic)
+                return fileURL
+            } catch {
+                NSLog("Could not save \(fileName) to \(fileURL.path): \(error.localizedDescription)")
+            }
+        }
+
+        return nil
     }
 
     private var recordsDecoder: JSONDecoder {
@@ -956,9 +1326,82 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
+    @objc private func editDailyGuidance() {
+        let alert = makeAlert()
+        alert.messageText = "今日指引"
+        alert.informativeText = "支持 - 或 1. 列表和 **加粗**；保存空内容可清除。"
+        alert.addButton(withTitle: "保存")
+        alert.addButton(withTitle: "取消")
+
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 360, height: 180))
+        scrollView.borderType = .bezelBorder
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+
+        let textView = NSTextView(frame: scrollView.contentView.bounds)
+        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
+        textView.textContainerInset = NSSize(width: 6, height: 6)
+        textView.isRichText = false
+        textView.importsGraphics = false
+        textView.isHorizontallyResizable = false
+        textView.isVerticallyResizable = true
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.containerSize = NSSize(
+            width: scrollView.contentSize.width,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.string = dailyGuidanceByDate[todayDateKey] ?? ""
+        textView.setSelectedRange(NSRange(location: textView.string.utf16.count, length: 0))
+        scrollView.documentView = textView
+        alert.accessoryView = scrollView
+
+        NSApp.activate(ignoringOtherApps: true)
+        alert.window.initialFirstResponder = textView
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return
+        }
+
+        let guidance = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        loadDailyGuidance()
+        let previousGuidance = dailyGuidanceByDate
+        if guidance.isEmpty {
+            dailyGuidanceByDate[todayDateKey] = ""
+        } else {
+            dailyGuidanceByDate[todayDateKey] = guidance
+        }
+
+        guard saveDailyGuidance(dailyGuidanceByDate) != nil else {
+            dailyGuidanceByDate = previousGuidance
+            showDailyGuidanceSaveError()
+            return
+        }
+
+        rebuildMenu()
+    }
+
+    private func showDailyGuidanceSaveError() {
+        let alert = makeAlert()
+        alert.messageText = "无法保存今日指引"
+        alert.informativeText = "请检查 iCloud Drive 或本地数据目录是否可写。"
+        alert.addButton(withTitle: "好")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
     @objc private func openRecordsFile() {
-        if !FileManager.default.fileExists(atPath: recordsFileURL.path) {
-            saveRecords()
+        let existingFileURL = readableDataFileURLs(named: recordsFileName)
+            .reversed()
+            .first { FileManager.default.fileExists(atPath: $0.path) }
+        guard let recordsFileURL = saveRecords() ?? existingFileURL else {
+            let alert = makeAlert()
+            alert.messageText = "无法保存记录文件"
+            alert.informativeText = "请检查 iCloud Drive 或本地数据目录是否可写。"
+            alert.addButton(withTitle: "好")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+            return
         }
 
         if !NSWorkspace.shared.open(recordsFileURL) {
