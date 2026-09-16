@@ -476,6 +476,8 @@ final class PomodoroStore: ObservableObject {
             _ = try? await center.requestAuthorization(options: [.alert, .sound])
         }
 
+        guard isRunning, selectedMode != .countUp, displaySeconds > 0 else { return }
+
         let content = UNMutableNotificationContent()
         content.title = selectedMode == .focus ? "专注完成" : "休息完成"
         content.body = "打开 Pomodoro Bar 开始下一段。"

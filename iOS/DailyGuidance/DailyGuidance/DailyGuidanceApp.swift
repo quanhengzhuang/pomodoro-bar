@@ -36,6 +36,9 @@ struct PomodoroBarApp: App {
         }
         .onChange(of: scenePhase) { phase in
             store.scenePhaseChanged(phase)
+            if phase == .active, guidanceStore.hasSelectedFile {
+                guidanceStore.refresh()
+            }
         }
     }
 }
