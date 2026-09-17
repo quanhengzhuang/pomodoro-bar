@@ -57,7 +57,7 @@ iOS/DailyGuidance/DailyGuidance.xcodeproj
 
 iOS 版支持自由计时、25 分钟专注、5/15 分钟休息，以及暂停、继续、调整时长、备注和最近记录。开始计时后会创建实时活动，在锁定屏幕和支持的 iPhone 灵动岛显示剩余或已用时间；请允许通知，并确认系统“设置 > Pomodoro Bar > 实时活动”已开启。
 
-右上角的引号按钮保留“今日指引”查看功能。首次使用时，在系统文件选择器中进入 `iCloud Drive/PomodoroBar/` 并选择 `daily-guidance.json`；App 只读该文件。iOS 计时记录保存在 App 自己的沙盒中，不覆盖或删除 Mac 端数据。
+右上角的引号按钮保留“今日指引”查看功能，并可通过日历按钮查看最近 30 个自然日内内容非空的历史指引。首次使用时，在系统文件选择器中进入 `iCloud Drive/PomodoroBar/` 并选择 `daily-guidance.json`；App 只读该文件。iOS 计时记录保存在 App 自己的沙盒中，不覆盖或删除 Mac 端数据。
 
 ## 记录格式
 

@@ -9,13 +9,31 @@ enum GuidanceViewState: Equatable {
     case error(String)
 }
 
+struct GuidanceHistoryEntry: Identifiable, Equatable {
+    let dateKey: String
+    let date: Date
+    let guidance: String
+
+    var id: String { dateKey }
+}
+
 @MainActor
 final class GuidanceStore: ObservableObject {
     @Published private(set) var state: GuidanceViewState = .noFile
     @Published private(set) var selectedFileName: String?
+    @Published private(set) var historyEntries: [GuidanceHistoryEntry] = []
 
     private let bookmarkStorageKey = "daily-guidance-file-bookmark"
     private var selectedFileURL: URL?
+    private lazy var dateKeyFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+        formatter.isLenient = false
+        return formatter
+    }()
 
     var hasSelectedFile: Bool {
         selectedFileURL != nil
@@ -45,6 +63,7 @@ final class GuidanceStore: ObservableObject {
 
     func refresh() {
         guard let selectedFileURL else {
+            historyEntries = []
             state = .noFile
             return
         }
@@ -56,13 +75,16 @@ final class GuidanceStore: ObservableObject {
                 try Data(contentsOf: selectedFileURL)
             }
             let guidanceByDate = try JSONDecoder().decode([String: String].self, from: data)
+            historyEntries = recentHistory(from: guidanceByDate)
             let guidance = guidanceByDate[todayDateKey] ?? ""
             state = guidance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 ? .empty
                 : .content(guidance)
         } catch let error as DecodingError {
+            historyEntries = []
             state = .error("数据文件格式无效：\(decodingErrorDescription(error))")
         } catch {
+            historyEntries = []
             state = .error("无法读取数据文件，请确认文件仍在 iCloud Drive 中。")
         }
     }
@@ -70,6 +92,7 @@ final class GuidanceStore: ObservableObject {
     func forgetSelectedFile() {
         selectedFileURL = nil
         selectedFileName = nil
+        historyEntries = []
         UserDefaults.standard.removeObject(forKey: bookmarkStorageKey)
         state = .noFile
     }
@@ -121,11 +144,30 @@ final class GuidanceStore: ObservableObject {
     }
 
     private var todayDateKey: String {
-        let formatter = DateFormatter()
-        formatter.calendar = Calendar(identifier: .gregorian)
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
-        return formatter.string(from: Date())
+        dateKeyFormatter.string(from: Date())
+    }
+
+    private func recentHistory(from guidanceByDate: [String: String]) -> [GuidanceHistoryEntry] {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+
+        let today = calendar.startOfDay(for: Date())
+        guard let earliestDate = calendar.date(byAdding: .day, value: -29, to: today) else {
+            return []
+        }
+
+        return guidanceByDate.compactMap { dateKey, guidance in
+            guard !guidance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  let parsedDate = dateKeyFormatter.date(from: dateKey),
+                  dateKeyFormatter.string(from: parsedDate) == dateKey else {
+                return nil
+            }
+
+            let date = calendar.startOfDay(for: parsedDate)
+            guard date >= earliestDate, date <= today else { return nil }
+            return GuidanceHistoryEntry(dateKey: dateKey, date: date, guidance: guidance)
+        }
+        .sorted { $0.date > $1.date }
     }
 
     private func decodingErrorDescription(_ error: DecodingError) -> String {

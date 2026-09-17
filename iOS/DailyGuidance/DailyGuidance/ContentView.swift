@@ -337,19 +337,7 @@ private struct GuidanceSheet: View {
                 case .loading:
                     ProgressView("正在读取今日指引…")
                 case .content(let guidance):
-                    ScrollView {
-                        HStack(alignment: .top, spacing: 16) {
-                            RoundedRectangle(cornerRadius: 2).fill(guidanceColor).frame(width: 4)
-                            Text(guidance)
-                                .font(.title3)
-                                .italic()
-                                .foregroundStyle(guidanceColor)
-                                .lineSpacing(7)
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        .padding(24)
-                    }
+                    GuidanceTextView(guidance: guidance)
                 case .empty:
                     stateView(symbol: "sun.max", title: "今天还没有指引", message: store.selectedFileName ?? "")
                 case .error(let message):
@@ -363,6 +351,14 @@ private struct GuidanceSheet: View {
                     Button("关闭") { dismiss() }
                 }
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    if store.hasSelectedFile {
+                        NavigationLink {
+                            GuidanceHistoryView(store: store)
+                        } label: {
+                            Image(systemName: "calendar")
+                        }
+                        .accessibilityLabel("今日指引记录")
+                    }
                     Button(action: selectAnotherFile) { Image(systemName: "doc.badge.gearshape") }
                     if store.hasSelectedFile {
                         Button(action: store.refresh) { Image(systemName: "arrow.clockwise") }
@@ -380,6 +376,87 @@ private struct GuidanceSheet: View {
             Button("选择数据文件", action: selectAnotherFile).buttonStyle(.borderedProminent)
         }
         .padding(30)
+    }
+
+    private var guidanceColor: Color {
+        colorScheme == .dark
+            ? Color(red: 0.98, green: 0.73, blue: 0.22)
+            : Color(red: 0.58, green: 0.39, blue: 0.05)
+    }
+}
+
+private struct GuidanceHistoryView: View {
+    @ObservedObject var store: GuidanceStore
+
+    var body: some View {
+        Group {
+            if store.historyEntries.isEmpty {
+                VStack(spacing: 14) {
+                    Image(systemName: "calendar.badge.clock")
+                        .font(.system(size: 40, weight: .light))
+                        .foregroundStyle(.secondary)
+                    Text("近 30 天暂无指引")
+                        .font(.headline)
+                    Text("保存过的今日指引会显示在这里。")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                .multilineTextAlignment(.center)
+                .padding(30)
+            } else {
+                List(store.historyEntries) { entry in
+                    NavigationLink {
+                        GuidanceHistoryDetailView(entry: entry)
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(entry.date, format: .dateTime.year().month().day())
+                                .font(.body.weight(.semibold))
+                            Text(entry.date, format: .dateTime.weekday(.wide))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
+                .listStyle(.insetGrouped)
+            }
+        }
+        .navigationTitle("今日指引记录")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct GuidanceHistoryDetailView: View {
+    let entry: GuidanceHistoryEntry
+
+    var body: some View {
+        GuidanceTextView(guidance: entry.guidance)
+            .navigationTitle(entry.dateKey)
+            .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct GuidanceTextView: View {
+    let guidance: String
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ScrollView {
+            HStack(alignment: .top, spacing: 16) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(guidanceColor)
+                    .frame(width: 4)
+                Text(guidance)
+                    .font(.title3)
+                    .italic()
+                    .foregroundStyle(guidanceColor)
+                    .lineSpacing(7)
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .padding(24)
+        }
     }
 
     private var guidanceColor: Color {

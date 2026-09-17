@@ -57,7 +57,7 @@ Open the project in the full Xcode application, select the `PomodoroBar` target,
 
 The iOS app supports a count-up timer, 25-minute focus, 5/15-minute breaks, pause, resume, duration adjustments, notes, and recent records. Starting a timer creates a Live Activity that shows elapsed or remaining time on the Lock Screen and in the Dynamic Island on supported iPhones. Allow notifications and make sure Live Activities are enabled under Settings > Pomodoro Bar.
 
-The quote button in the top-right corner retains the Daily Guidance viewer. On first use, select `iCloud Drive/PomodoroBar/daily-guidance.json` in the system file picker; the app only reads that file. iOS timer records stay in the app's own sandbox and never overwrite or delete Mac data.
+The quote button in the top-right corner retains the Daily Guidance viewer, and the calendar button shows non-empty guidance from the most recent 30 calendar days. On first use, select `iCloud Drive/PomodoroBar/daily-guidance.json` in the system file picker; the app only reads that file. iOS timer records stay in the app's own sandbox and never overwrite or delete Mac data.
 
 ## Record Format
 
