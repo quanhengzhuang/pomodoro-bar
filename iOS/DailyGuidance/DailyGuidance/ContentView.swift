@@ -31,6 +31,7 @@ struct ContentView: View {
             ScrollView {
                 VStack(spacing: 26) {
                     modePicker
+                    guidanceEntry
                     timerFace
                     controls
                     todaySummary
@@ -43,22 +44,6 @@ struct ContentView: View {
             .background(background)
             .navigationTitle("Pomodoro Bar")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        if guidanceStore.hasSelectedFile {
-                            // 每次打开前重新读文件，以看到 Mac/iCloud 的最新修改。
-                            guidanceStore.refresh()
-                            isShowingGuidance = true
-                        } else {
-                            isSelectingGuidance = true
-                        }
-                    } label: {
-                        Image(systemName: "quote.opening")
-                    }
-                    .accessibilityLabel("今日指引")
-                }
-            }
         }
         .tint(.tomato)
         .fileImporter(
@@ -116,6 +101,40 @@ struct ContentView: View {
 
     // MARK: - 首页组成部分
 
+    /// 把重要的指引入口放在内容区，比顶栏小图标更容易发现和点击。
+    private var guidanceEntry: some View {
+        Button(action: openGuidance) {
+            HStack(spacing: 14) {
+                Image(systemName: "quote.opening")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(Color.tomato)
+                    .frame(width: 40, height: 40)
+                    .background(Circle().fill(Color.tomato.opacity(0.12)))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("今日指引")
+                        .font(.subheadline.weight(.semibold))
+                    Text(guidanceStore.hasSelectedFile ? "查看与编辑今天的方向" : "选择数据文件后开始使用")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(.tertiary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.card))
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("今日指引")
+        .accessibilityHint(guidanceStore.hasSelectedFile ? "查看与编辑指引" : "选择指引数据文件")
+    }
+
     /// 四种计时模式的横向选择器。
     private var modePicker: some View {
         HStack(spacing: 8) {
@@ -143,6 +162,17 @@ struct ContentView: View {
                 .disabled(store.hasActiveSession)
                 .opacity(store.hasActiveSession && store.selectedMode != mode ? 0.45 : 1)
             }
+        }
+    }
+
+    /// 已绑定文件时直接打开；首次使用时先让用户选择数据文件。
+    private func openGuidance() {
+        if guidanceStore.hasSelectedFile {
+            // 每次打开前重新读文件，以看到 Mac/iCloud 的最新修改。
+            guidanceStore.refresh()
+            isShowingGuidance = true
+        } else {
+            isSelectingGuidance = true
         }
     }
 
