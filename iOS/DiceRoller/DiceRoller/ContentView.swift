@@ -7,7 +7,7 @@ struct ContentView: View {
     @State private var diceCount = 2
     @State private var rollToken = 0
     @State private var isRolling = false
-    @State private var latestValues: [Int] = []
+    @State private var latestValues: [Int?] = []
     @State private var history: [RollRecord]
 
     init() {
@@ -59,7 +59,7 @@ struct ContentView: View {
                     .monospacedDigit()
                     .foregroundStyle(AppPalette.ivory)
                     .minimumScaleFactor(0.7)
-                Text(isRolling ? "滚动中" : "总点数")
+                Text(isRolling ? "逐个落下" : "总点数")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppPalette.mutedText)
             }
@@ -139,13 +139,18 @@ struct ContentView: View {
                 rollToken: rollToken,
                 reduceMotion: reduceMotion,
                 accessibilityValue: trayAccessibilityValue
-            ) { values in
+            ) { index, value in
+                revealDie(at: index, value: value)
+            } onRollFinished: { values in
                 finishRoll(with: values)
             }
             .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
             .padding(8)
         }
-        .frame(height: 348)
+        // A landscape tray keeps the full play surface visible instead of making the table
+        // read as a clipped square window on iPhone and Mac-designed-for-iPhone layouts.
+        .frame(maxWidth: .infinity)
+        .aspectRatio(1.45, contentMode: .fit)
         .shadow(color: .black.opacity(0.46), radius: 22, x: 0, y: 14)
         .accessibilityElement(children: .contain)
     }
@@ -154,7 +159,7 @@ struct ContentView: View {
         Button {
             guard !isRolling else { return }
             isRolling = true
-            latestValues = []
+            latestValues = Array(repeating: nil, count: diceCount)
             rollToken += 1
             UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 0.9)
         } label: {
@@ -165,7 +170,7 @@ struct ContentView: View {
                 } else {
                     Image(systemName: "die.face.5.fill")
                 }
-                Text(isRolling ? "骰子滚动中" : "摇骰子")
+                Text(isRolling ? "骰子逐个落下" : "摇骰子")
                     .font(.headline.weight(.bold))
             }
             .frame(maxWidth: .infinity)
@@ -212,25 +217,39 @@ struct ContentView: View {
     }
 
     private var latestTotalText: String {
-        guard !latestValues.isEmpty else { return "—" }
-        return String(latestValues.reduce(0, +))
+        let revealed = latestValues.compactMap { $0 }
+        guard !revealed.isEmpty else { return "—" }
+        return String(revealed.reduce(0, +))
     }
 
     private var totalAccessibilityLabel: String {
-        if isRolling { return "骰子滚动中" }
-        guard !latestValues.isEmpty else { return "尚未投掷" }
-        return "总点数 \(latestValues.reduce(0, +))"
+        if isRolling {
+            return "已落定 \(latestValues.compactMap { $0 }.count) 枚，共 \(diceCount) 枚"
+        }
+        let revealed = latestValues.compactMap { $0 }
+        guard !revealed.isEmpty else { return "尚未投掷" }
+        return "总点数 \(revealed.reduce(0, +))"
     }
 
     private var trayAccessibilityValue: String {
-        if isRolling { return "\(diceCount) 枚骰子正在滚动" }
-        guard !latestValues.isEmpty else { return "\(diceCount) 枚骰子，等待投掷" }
-        return "骰面为 \(latestValues.map(String.init).joined(separator: "、"))"
+        if isRolling {
+            let values = latestValues.compactMap { $0 }.map(String.init).joined(separator: "、")
+            return values.isEmpty ? "\(diceCount) 枚骰子正在逐个落下" : "已落定骰面：\(values)"
+        }
+        let revealed = latestValues.compactMap { $0 }
+        guard !revealed.isEmpty else { return "\(diceCount) 枚骰子，等待投掷" }
+        return "骰面为 \(revealed.map(String.init).joined(separator: "、"))"
+    }
+
+    private func revealDie(at index: Int, value: Int) {
+        guard latestValues.indices.contains(index) else { return }
+        latestValues[index] = value
+        UIImpactFeedbackGenerator(style: .light).impactOccurred(intensity: 0.7)
     }
 
     private func finishRoll(with values: [Int]) {
         guard isRolling, values.count == diceCount else { return }
-        latestValues = values
+        latestValues = values.map(Optional.some)
         isRolling = false
 
         let record = RollRecord(values: values)
