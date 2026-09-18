@@ -91,9 +91,14 @@ final class GuidanceStore: ObservableObject {
     }
 
     @discardableResult
-    func saveTodayGuidance(_ guidance: String) -> Bool {
+    func saveGuidance(_ guidance: String, forDateKey dateKey: String) -> Bool {
         guard let selectedFileURL else {
             saveErrorMessage = "请先选择 daily-guidance.json。"
+            return false
+        }
+        guard let parsedDate = dateKeyFormatter.date(from: dateKey),
+              dateKeyFormatter.string(from: parsedDate) == dateKey else {
+            saveErrorMessage = "指引日期格式无效。"
             return false
         }
 
@@ -101,7 +106,7 @@ final class GuidanceStore: ObservableObject {
             let guidanceByDate = try withSecurityScopedAccess(to: selectedFileURL) {
                 let data = try Data(contentsOf: selectedFileURL)
                 var values = try JSONDecoder().decode([String: String].self, from: data)
-                values[todayDateKey] = guidance.trimmingCharacters(in: .whitespacesAndNewlines)
+                values[dateKey] = guidance.trimmingCharacters(in: .whitespacesAndNewlines)
 
                 let encoder = JSONEncoder()
                 encoder.outputFormatting = [.prettyPrinted, .sortedKeys]

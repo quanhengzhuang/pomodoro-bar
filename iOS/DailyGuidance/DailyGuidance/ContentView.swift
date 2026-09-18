@@ -327,7 +327,8 @@ private struct GuidanceSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
     @State private var draftGuidance = ""
-    @State private var isEditing = false
+    @State private var editingDateKey: String?
+    @State private var editingOriginalGuidance = ""
 
     var body: some View {
         NavigationStack {
@@ -341,21 +342,19 @@ private struct GuidanceSheet: View {
                     GuidanceTimelineView(
                         store: store,
                         draftGuidance: $draftGuidance,
-                        isEditing: isEditing
+                        editingDateKey: editingDateKey,
+                        beginEditing: beginEditing
                     )
                 case .error(let message):
                     stateView(symbol: "exclamationmark.icloud", title: "无法显示今日指引", message: message)
                 }
             }
-            .navigationTitle("今日指引")
+            .navigationTitle(isEditing ? "编辑指引" : "今日指引")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     if isEditing {
-                        Button("取消") {
-                            draftGuidance = store.todayGuidance
-                            isEditing = false
-                        }
+                        Button("取消", action: finishEditing)
                     } else {
                         Button("关闭") { dismiss() }
                     }
@@ -363,16 +362,17 @@ private struct GuidanceSheet: View {
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
                     if isEditing {
                         Button("保存") {
-                            if store.saveTodayGuidance(draftGuidance) {
-                                isEditing = false
+                            guard let editingDateKey else { return }
+                            if store.saveGuidance(draftGuidance, forDateKey: editingDateKey) {
+                                finishEditing()
                             }
                         }
                         .fontWeight(.semibold)
+                        .disabled(draftGuidance == editingOriginalGuidance)
                     } else {
                         if canEditGuidance {
                             Button {
-                                draftGuidance = store.todayGuidance
-                                isEditing = true
+                                beginEditing(store.todayDateKey, store.todayGuidance)
                             } label: {
                                 Image(systemName: "square.and.pencil")
                             }
@@ -394,7 +394,7 @@ private struct GuidanceSheet: View {
                 draftGuidance = guidance
             }
         }
-        .alert("无法保存今日指引", isPresented: Binding(
+        .alert("无法保存指引", isPresented: Binding(
             get: { store.saveErrorMessage != nil },
             set: { if !$0 { store.clearSaveError() } }
         )) {
@@ -428,38 +428,41 @@ private struct GuidanceSheet: View {
             return false
         }
     }
+
+    private var isEditing: Bool {
+        editingDateKey != nil
+    }
+
+    private func beginEditing(_ dateKey: String, _ guidance: String) {
+        draftGuidance = guidance
+        editingOriginalGuidance = guidance
+        editingDateKey = dateKey
+    }
+
+    private func finishEditing() {
+        editingDateKey = nil
+        editingOriginalGuidance = ""
+        draftGuidance = store.todayGuidance
+    }
 }
 
 private struct GuidanceTimelineView: View {
     @ObservedObject var store: GuidanceStore
     @Binding var draftGuidance: String
-    let isEditing: Bool
+    let editingDateKey: String?
+    let beginEditing: (String, String) -> Void
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 18) {
-                GuidanceEntryCard(
-                    date: store.todayDate,
-                    guidance: $draftGuidance,
-                    isEditable: isEditing,
-                    isToday: true
-                )
-
-                if pastEntries.isEmpty {
-                    Text("近 30 天暂无其他指引")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 22)
-                } else {
-                    ForEach(pastEntries) { entry in
-                        GuidanceEntryCard(
-                            date: entry.date,
-                            guidance: .constant(entry.guidance),
-                            isEditable: false,
-                            isToday: false
-                        )
+                if let editingDateKey {
+                    if editingDateKey == store.todayDateKey {
+                        editableCard(date: store.todayDate, isToday: true)
+                    } else if let entry = pastEntries.first(where: { $0.dateKey == editingDateKey }) {
+                        editableCard(date: entry.date, isToday: false)
                     }
+                } else {
+                    timeline
                 }
             }
             .padding(.horizontal, 16)
@@ -470,6 +473,45 @@ private struct GuidanceTimelineView: View {
     private var pastEntries: [GuidanceHistoryEntry] {
         store.historyEntries.filter { $0.dateKey != store.todayDateKey }
     }
+
+    @ViewBuilder
+    private var timeline: some View {
+        GuidanceEntryCard(
+            date: store.todayDate,
+            guidance: $draftGuidance,
+            isEditable: false,
+            isToday: true,
+            onEdit: { beginEditing(store.todayDateKey, store.todayGuidance) }
+        )
+
+        if pastEntries.isEmpty {
+            Text("近 30 天暂无其他指引")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 22)
+        } else {
+            ForEach(pastEntries) { entry in
+                GuidanceEntryCard(
+                    date: entry.date,
+                    guidance: .constant(entry.guidance),
+                    isEditable: false,
+                    isToday: false,
+                    onEdit: { beginEditing(entry.dateKey, entry.guidance) }
+                )
+            }
+        }
+    }
+
+    private func editableCard(date: Date, isToday: Bool) -> some View {
+        GuidanceEntryCard(
+            date: date,
+            guidance: $draftGuidance,
+            isEditable: true,
+            isToday: isToday,
+            onEdit: nil
+        )
+    }
 }
 
 private struct GuidanceEntryCard: View {
@@ -477,22 +519,27 @@ private struct GuidanceEntryCard: View {
     @Binding var guidance: String
     let isEditable: Bool
     let isToday: Bool
+    let onEdit: (() -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(date, format: .dateTime.year().month().day())
+                Text(Self.dateFormatter.string(from: date))
                     .font(.headline)
-                Text(date, format: .dateTime.weekday(.wide))
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
                 Spacer()
                 if isToday {
                     Text("今天")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(guidanceColor)
+                } else if let onEdit {
+                    Button(action: onEdit) {
+                        Image(systemName: "square.and.pencil")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(guidanceColor)
+                    .accessibilityLabel("编辑\(Self.dateFormatter.string(from: date))的指引")
                 }
             }
 
@@ -509,7 +556,7 @@ private struct GuidanceEntryCard: View {
                     )
 
                     if guidance.isEmpty {
-                        Text(isEditable ? "输入今天的指引…" : "今天还没有指引")
+                        Text(placeholder)
                             .font(.title3)
                             .italic()
                             .foregroundStyle(isEditable ? guidanceColor.opacity(0.48) : Color.secondary)
@@ -528,6 +575,22 @@ private struct GuidanceEntryCard: View {
             ? Color(red: 0.98, green: 0.73, blue: 0.22)
             : Color(red: 0.58, green: 0.39, blue: 0.05)
     }
+
+    private var placeholder: String {
+        if isEditable {
+            return isToday ? "输入今天的指引…" : "输入这一天的指引…"
+        }
+        return isToday ? "今天还没有指引" : "这一天还没有指引"
+    }
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy年M月d日 EEEE"
+        return formatter
+    }()
 }
 
 private struct GuidanceStyledTextView: UIViewRepresentable {
