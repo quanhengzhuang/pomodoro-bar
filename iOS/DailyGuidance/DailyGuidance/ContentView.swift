@@ -578,10 +578,10 @@ private struct GuidanceEntryCard: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(Self.dateFormatter.string(from: date))
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
                 Spacer()
                 if isToday {
                     Text("今天")
@@ -609,7 +609,6 @@ private struct GuidanceEntryCard: View {
                 if guidance.isEmpty {
                     Text(placeholder)
                         .font(.body)
-                        .italic()
                         .foregroundStyle(isEditable ? guidanceColor.opacity(0.48) : Color.secondary)
                         .allowsHitTesting(false)
                 }
@@ -732,13 +731,11 @@ private struct GuidanceStyledTextView: UIViewRepresentable {
     /// 显示与输入共同使用的富文本属性；数据本身仍保存为纯文本。
     private var textAttributes: [NSAttributedString.Key: Any] {
         let baseFont = UIFont.preferredFont(forTextStyle: .body)
-        let italicFont = baseFont.fontDescriptor.withSymbolicTraits(.traitItalic)
-            .map { UIFont(descriptor: $0, size: 0) } ?? baseFont
         let paragraph = NSMutableParagraphStyle()
         // 稍紧的行距与正文字号更协调，保留轻松的阅读节奏。
         paragraph.lineSpacing = 5
         return [
-            .font: italicFont,
+            .font: baseFont,
             .foregroundColor: textColor,
             .paragraphStyle: paragraph
         ]
