@@ -21,7 +21,9 @@ struct GuidanceHistoryEntry: Identifiable, Equatable {
 final class GuidanceStore: ObservableObject {
     @Published private(set) var state: GuidanceViewState = .noFile
     @Published private(set) var selectedFileName: String?
+    @Published private(set) var todayGuidance = ""
     @Published private(set) var historyEntries: [GuidanceHistoryEntry] = []
+    @Published private(set) var saveErrorMessage: String?
 
     private let bookmarkStorageKey = "daily-guidance-file-bookmark"
     private var selectedFileURL: URL?
@@ -63,6 +65,7 @@ final class GuidanceStore: ObservableObject {
 
     func refresh() {
         guard let selectedFileURL else {
+            todayGuidance = ""
             historyEntries = []
             state = .noFile
             return
@@ -75,24 +78,60 @@ final class GuidanceStore: ObservableObject {
                 try Data(contentsOf: selectedFileURL)
             }
             let guidanceByDate = try JSONDecoder().decode([String: String].self, from: data)
-            historyEntries = recentHistory(from: guidanceByDate)
-            let guidance = guidanceByDate[todayDateKey] ?? ""
-            state = guidance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                ? .empty
-                : .content(guidance)
+            apply(guidanceByDate)
         } catch let error as DecodingError {
+            todayGuidance = ""
             historyEntries = []
             state = .error("数据文件格式无效：\(decodingErrorDescription(error))")
         } catch {
+            todayGuidance = ""
             historyEntries = []
             state = .error("无法读取数据文件，请确认文件仍在 iCloud Drive 中。")
         }
     }
 
+    @discardableResult
+    func saveTodayGuidance(_ guidance: String) -> Bool {
+        guard let selectedFileURL else {
+            saveErrorMessage = "请先选择 daily-guidance.json。"
+            return false
+        }
+
+        do {
+            let guidanceByDate = try withSecurityScopedAccess(to: selectedFileURL) {
+                let data = try Data(contentsOf: selectedFileURL)
+                var values = try JSONDecoder().decode([String: String].self, from: data)
+                values[todayDateKey] = guidance.trimmingCharacters(in: .whitespacesAndNewlines)
+
+                let encoder = JSONEncoder()
+                encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+                var updatedData = try encoder.encode(values)
+                updatedData.append(0x0A)
+                try updatedData.write(to: selectedFileURL, options: .atomic)
+                return values
+            }
+
+            saveErrorMessage = nil
+            apply(guidanceByDate)
+            return true
+        } catch let error as DecodingError {
+            saveErrorMessage = "数据文件格式无效：\(decodingErrorDescription(error))"
+        } catch {
+            saveErrorMessage = "无法写入数据文件，请确认 iCloud 文件已下载且仍可访问。"
+        }
+        return false
+    }
+
+    func clearSaveError() {
+        saveErrorMessage = nil
+    }
+
     func forgetSelectedFile() {
         selectedFileURL = nil
         selectedFileName = nil
+        todayGuidance = ""
         historyEntries = []
+        saveErrorMessage = nil
         UserDefaults.standard.removeObject(forKey: bookmarkStorageKey)
         state = .noFile
     }
@@ -143,8 +182,22 @@ final class GuidanceStore: ObservableObject {
         return try operation()
     }
 
-    private var todayDateKey: String {
+    var todayDate: Date {
+        Calendar.current.startOfDay(for: Date())
+    }
+
+    var todayDateKey: String {
         dateKeyFormatter.string(from: Date())
+    }
+
+    private func apply(_ guidanceByDate: [String: String]) {
+        let guidance = guidanceByDate[todayDateKey] ?? ""
+        saveErrorMessage = nil
+        todayGuidance = guidance
+        historyEntries = recentHistory(from: guidanceByDate)
+        state = guidance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? .empty
+            : .content(guidance)
     }
 
     private func recentHistory(from guidanceByDate: [String: String]) -> [GuidanceHistoryEntry] {

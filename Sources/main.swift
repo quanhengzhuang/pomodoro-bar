@@ -169,6 +169,8 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private let dailyGuidanceFileName = "daily-guidance.json"
     private let iCloudDataDirectoryName = "PomodoroBar"
     private let dailyGuidanceMenuWidth: CGFloat = 520
+    private let dailyGuidanceHorizontalPadding: CGFloat = 16
+    private let dailyGuidanceVerticalPadding: CGFloat = 8
 
     private let shortBreakDurationSeconds = 5 * 60
     private let longBreakDurationSeconds = 15 * 60
@@ -568,21 +570,14 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     }
 
     private func makeDailyGuidanceMenuView(text: String) -> NSView {
-        let horizontalPadding: CGFloat = 16
-        let verticalPadding: CGFloat = 8
-        let contentWidth = dailyGuidanceMenuWidth - horizontalPadding * 2
+        let contentWidth = dailyGuidanceMenuWidth - dailyGuidanceHorizontalPadding * 2
         let body = NSTextView(frame: NSRect(
-            x: horizontalPadding,
-            y: verticalPadding,
+            x: dailyGuidanceHorizontalPadding,
+            y: dailyGuidanceVerticalPadding,
             width: contentWidth,
             height: 1
         ))
         let baseFont = NSFont.menuFont(ofSize: 0)
-        let attributes: [NSAttributedString.Key: Any] = [
-            .font: baseFont,
-            .foregroundColor: dailyGuidanceColor,
-            .obliqueness: 0.16
-        ]
         body.isEditable = false
         body.isSelectable = false
         body.isRichText = false
@@ -596,7 +591,10 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             width: contentWidth,
             height: CGFloat.greatestFiniteMagnitude
         )
-        body.textStorage?.setAttributedString(NSAttributedString(string: text, attributes: attributes))
+        body.textStorage?.setAttributedString(NSAttributedString(
+            string: text,
+            attributes: dailyGuidanceTextAttributes
+        ))
 
         let bodyHeight: CGFloat
         if let textContainer = body.textContainer, let layoutManager = body.layoutManager {
@@ -607,10 +605,18 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
         body.frame.size.height = bodyHeight
 
-        let viewHeight = verticalPadding * 2 + bodyHeight
+        let viewHeight = dailyGuidanceVerticalPadding * 2 + bodyHeight
         let container = NSView(frame: NSRect(x: 0, y: 0, width: dailyGuidanceMenuWidth, height: viewHeight))
         container.addSubview(body)
         return container
+    }
+
+    private var dailyGuidanceTextAttributes: [NSAttributedString.Key: Any] {
+        [
+            .font: NSFont.menuFont(ofSize: 0),
+            .foregroundColor: dailyGuidanceColor,
+            .obliqueness: 0.16
+        ]
     }
 
     private var dailyGuidanceColor: NSColor {
@@ -1308,30 +1314,50 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     @objc private func editDailyGuidance() {
         let alert = makeAlert()
         alert.messageText = "今日指引"
-        alert.informativeText = "支持换行；保存空内容可清除。"
+        let weekday = historyWeekdayFormatter.string(from: Date())
+        alert.informativeText = "\(todayDateKey) \(weekday) · 支持换行；保存空内容可清除。"
         alert.addButton(withTitle: "保存")
         alert.addButton(withTitle: "取消")
 
-        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: 360, height: 180))
-        scrollView.borderType = .bezelBorder
+        let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: dailyGuidanceMenuWidth, height: 220))
+        scrollView.borderType = .noBorder
         scrollView.hasVerticalScroller = true
         scrollView.hasHorizontalScroller = false
         scrollView.autohidesScrollers = true
+        scrollView.scrollerStyle = .overlay
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = .textBackgroundColor
+        scrollView.wantsLayer = true
+        scrollView.layer?.cornerRadius = 8
+        scrollView.layer?.borderWidth = 1
+        scrollView.layer?.borderColor = NSColor.separatorColor.cgColor
 
         let textView = NSTextView(frame: scrollView.contentView.bounds)
-        textView.font = .systemFont(ofSize: NSFont.systemFontSize)
-        textView.textContainerInset = NSSize(width: 6, height: 6)
+        textView.minSize = NSSize(width: dailyGuidanceMenuWidth, height: scrollView.contentSize.height)
+        textView.maxSize = NSSize(width: dailyGuidanceMenuWidth, height: CGFloat.greatestFiniteMagnitude)
+        textView.textContainerInset = NSSize(
+            width: dailyGuidanceHorizontalPadding,
+            height: dailyGuidanceVerticalPadding
+        )
         textView.isRichText = false
         textView.importsGraphics = false
+        textView.drawsBackground = false
         textView.isHorizontallyResizable = false
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
-        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.lineFragmentPadding = 0
+        textView.textContainer?.widthTracksTextView = false
         textView.textContainer?.containerSize = NSSize(
-            width: scrollView.contentSize.width,
+            width: dailyGuidanceMenuWidth - dailyGuidanceHorizontalPadding * 2,
             height: CGFloat.greatestFiniteMagnitude
         )
-        textView.string = dailyGuidanceByDate[todayDateKey] ?? ""
+        let existingGuidance = dailyGuidanceByDate[todayDateKey] ?? ""
+        textView.textStorage?.setAttributedString(NSAttributedString(
+            string: existingGuidance,
+            attributes: dailyGuidanceTextAttributes
+        ))
+        textView.typingAttributes = dailyGuidanceTextAttributes
+        textView.insertionPointColor = dailyGuidanceColor
         textView.setSelectedRange(NSRange(location: textView.string.utf16.count, length: 0))
         scrollView.documentView = textView
         alert.accessoryView = scrollView

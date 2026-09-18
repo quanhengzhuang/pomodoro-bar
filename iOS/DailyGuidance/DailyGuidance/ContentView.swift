@@ -203,10 +203,9 @@ struct ContentView: View {
                     store.performPrimaryAction()
                 } label: {
                     Label(store.primaryActionTitle, systemImage: primaryActionSymbol)
-                        .font(.headline)
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(TomatoButtonStyle())
+                .buttonStyle(SessionActionButtonStyle(isProminent: !store.hasActiveSession))
 
                 Button {
                     store.endSession()
@@ -214,7 +213,7 @@ struct ContentView: View {
                     Label("结束", systemImage: "stop.fill")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(QuietButtonStyle())
+                .buttonStyle(SessionActionButtonStyle(isProminent: store.hasActiveSession))
                 .disabled(!store.hasActiveSession)
             }
 
@@ -327,6 +326,8 @@ private struct GuidanceSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    @State private var draftGuidance = ""
+    @State private var isEditing = false
 
     var body: some View {
         NavigationStack {
@@ -336,10 +337,12 @@ private struct GuidanceSheet: View {
                     stateView(symbol: "icloud.and.arrow.down", title: "选择今日指引数据", message: "请选择 iCloud Drive/PomodoroBar/daily-guidance.json。")
                 case .loading:
                     ProgressView("正在读取今日指引…")
-                case .content(let guidance):
-                    GuidanceTextView(guidance: guidance)
-                case .empty:
-                    stateView(symbol: "sun.max", title: "今天还没有指引", message: store.selectedFileName ?? "")
+                case .content, .empty:
+                    GuidanceTimelineView(
+                        store: store,
+                        draftGuidance: $draftGuidance,
+                        isEditing: isEditing
+                    )
                 case .error(let message):
                     stateView(symbol: "exclamationmark.icloud", title: "无法显示今日指引", message: message)
                 }
@@ -348,23 +351,56 @@ private struct GuidanceSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    Button("关闭") { dismiss() }
+                    if isEditing {
+                        Button("取消") {
+                            draftGuidance = store.todayGuidance
+                            isEditing = false
+                        }
+                    } else {
+                        Button("关闭") { dismiss() }
+                    }
                 }
                 ToolbarItemGroup(placement: .navigationBarTrailing) {
-                    if store.hasSelectedFile {
-                        NavigationLink {
-                            GuidanceHistoryView(store: store)
-                        } label: {
-                            Image(systemName: "calendar")
+                    if isEditing {
+                        Button("保存") {
+                            if store.saveTodayGuidance(draftGuidance) {
+                                isEditing = false
+                            }
                         }
-                        .accessibilityLabel("今日指引记录")
-                    }
-                    Button(action: selectAnotherFile) { Image(systemName: "doc.badge.gearshape") }
-                    if store.hasSelectedFile {
-                        Button(action: store.refresh) { Image(systemName: "arrow.clockwise") }
+                        .fontWeight(.semibold)
+                    } else {
+                        if canEditGuidance {
+                            Button {
+                                draftGuidance = store.todayGuidance
+                                isEditing = true
+                            } label: {
+                                Image(systemName: "square.and.pencil")
+                            }
+                            .accessibilityLabel("修改今日指引")
+                        }
+                        Button(action: selectAnotherFile) { Image(systemName: "doc.badge.gearshape") }
+                        if store.hasSelectedFile {
+                            Button(action: store.refresh) { Image(systemName: "arrow.clockwise") }
+                        }
                     }
                 }
             }
+        }
+        .onAppear {
+            draftGuidance = store.todayGuidance
+        }
+        .onChange(of: store.todayGuidance) { guidance in
+            if !isEditing {
+                draftGuidance = guidance
+            }
+        }
+        .alert("无法保存今日指引", isPresented: Binding(
+            get: { store.saveErrorMessage != nil },
+            set: { if !$0 { store.clearSaveError() } }
+        )) {
+            Button("好", role: .cancel) { store.clearSaveError() }
+        } message: {
+            Text(store.saveErrorMessage ?? "")
         }
     }
 
@@ -383,80 +419,108 @@ private struct GuidanceSheet: View {
             ? Color(red: 0.98, green: 0.73, blue: 0.22)
             : Color(red: 0.58, green: 0.39, blue: 0.05)
     }
+
+    private var canEditGuidance: Bool {
+        switch store.state {
+        case .content, .empty:
+            return store.hasSelectedFile
+        case .noFile, .loading, .error:
+            return false
+        }
+    }
 }
 
-private struct GuidanceHistoryView: View {
+private struct GuidanceTimelineView: View {
     @ObservedObject var store: GuidanceStore
+    @Binding var draftGuidance: String
+    let isEditing: Bool
 
     var body: some View {
-        Group {
-            if store.historyEntries.isEmpty {
-                VStack(spacing: 14) {
-                    Image(systemName: "calendar.badge.clock")
-                        .font(.system(size: 40, weight: .light))
-                        .foregroundStyle(.secondary)
-                    Text("近 30 天暂无指引")
-                        .font(.headline)
-                    Text("保存过的今日指引会显示在这里。")
+        ScrollView {
+            LazyVStack(spacing: 18) {
+                GuidanceEntryCard(
+                    date: store.todayDate,
+                    guidance: $draftGuidance,
+                    isEditable: isEditing,
+                    isToday: true
+                )
+
+                if pastEntries.isEmpty {
+                    Text("近 30 天暂无其他指引")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                }
-                .multilineTextAlignment(.center)
-                .padding(30)
-            } else {
-                List(store.historyEntries) { entry in
-                    NavigationLink {
-                        GuidanceHistoryDetailView(entry: entry)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(entry.date, format: .dateTime.year().month().day())
-                                .font(.body.weight(.semibold))
-                            Text(entry.date, format: .dateTime.weekday(.wide))
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        .padding(.vertical, 4)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 22)
+                } else {
+                    ForEach(pastEntries) { entry in
+                        GuidanceEntryCard(
+                            date: entry.date,
+                            guidance: .constant(entry.guidance),
+                            isEditable: false,
+                            isToday: false
+                        )
                     }
                 }
-                .listStyle(.insetGrouped)
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 18)
         }
-        .navigationTitle("今日指引记录")
-        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private var pastEntries: [GuidanceHistoryEntry] {
+        store.historyEntries.filter { $0.dateKey != store.todayDateKey }
     }
 }
 
-private struct GuidanceHistoryDetailView: View {
-    let entry: GuidanceHistoryEntry
-
-    var body: some View {
-        GuidanceTextView(guidance: entry.guidance)
-            .navigationTitle(entry.dateKey)
-            .navigationBarTitleDisplayMode(.inline)
-    }
-}
-
-private struct GuidanceTextView: View {
-    let guidance: String
+private struct GuidanceEntryCard: View {
+    let date: Date
+    @Binding var guidance: String
+    let isEditable: Bool
+    let isToday: Bool
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ScrollView {
-            HStack(alignment: .top, spacing: 16) {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Text(date, format: .dateTime.year().month().day())
+                    .font(.headline)
+                Text(date, format: .dateTime.weekday(.wide))
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                if isToday {
+                    Text("今天")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(guidanceColor)
+                }
+            }
+
+            HStack(alignment: .top, spacing: 12) {
                 RoundedRectangle(cornerRadius: 2)
                     .fill(guidanceColor)
                     .frame(width: 4)
-                Text(guidance)
-                    .font(.title3)
-                    .italic()
-                    .foregroundStyle(guidanceColor)
-                    .lineSpacing(7)
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                ZStack(alignment: .topLeading) {
+                    GuidanceStyledTextView(
+                        text: $guidance,
+                        isEditable: isEditable,
+                        textColor: UIColor(guidanceColor)
+                    )
+
+                    if guidance.isEmpty {
+                        Text(isEditable ? "输入今天的指引…" : "今天还没有指引")
+                            .font(.title3)
+                            .italic()
+                            .foregroundStyle(isEditable ? guidanceColor.opacity(0.48) : Color.secondary)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(24)
         }
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.card))
     }
 
     private var guidanceColor: Color {
@@ -466,13 +530,120 @@ private struct GuidanceTextView: View {
     }
 }
 
-private struct TomatoButtonStyle: ButtonStyle {
+private struct GuidanceStyledTextView: UIViewRepresentable {
+    @Binding var text: String
+    let isEditable: Bool
+    let textColor: UIColor
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.delegate = context.coordinator
+        textView.backgroundColor = .clear
+        textView.isScrollEnabled = false
+        textView.isEditable = isEditable
+        textView.isSelectable = true
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        textView.adjustsFontForContentSizeCategory = true
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        context.coordinator.parent = self
+        let attributes = textAttributes
+        let selectedRange = textView.selectedRange
+
+        if textView.text != text {
+            textView.attributedText = NSAttributedString(string: text, attributes: attributes)
+        } else if !textView.text.isEmpty {
+            textView.textStorage.setAttributes(
+                attributes,
+                range: NSRange(location: 0, length: textView.textStorage.length)
+            )
+        }
+
+        textView.typingAttributes = attributes
+        textView.isEditable = isEditable
+        textView.isSelectable = true
+        if isEditable && !context.coordinator.wasEditable {
+            textView.selectedRange = NSRange(location: textView.textStorage.length, length: 0)
+            DispatchQueue.main.async { textView.becomeFirstResponder() }
+        } else if selectedRange.location <= textView.textStorage.length {
+            textView.selectedRange = selectedRange
+        }
+
+        if !isEditable && context.coordinator.wasEditable {
+            textView.resignFirstResponder()
+        }
+        context.coordinator.wasEditable = isEditable
+    }
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: UITextView,
+        context: Context
+    ) -> CGSize? {
+        guard let width = proposal.width else { return nil }
+        let fittingHeight = uiView.sizeThatFits(CGSize(
+            width: width,
+            height: .greatestFiniteMagnitude
+        )).height
+        let font = textAttributes[.font] as? UIFont
+        let minimumHeight = isEditable ? 180 : (font?.lineHeight ?? 24)
+        return CGSize(width: width, height: ceil(max(fittingHeight, minimumHeight)))
+    }
+
+    private var textAttributes: [NSAttributedString.Key: Any] {
+        let baseFont = UIFont.preferredFont(forTextStyle: .title3)
+        let italicFont = baseFont.fontDescriptor.withSymbolicTraits(.traitItalic)
+            .map { UIFont(descriptor: $0, size: 0) } ?? baseFont
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineSpacing = 7
+        return [
+            .font: italicFont,
+            .foregroundColor: textColor,
+            .paragraphStyle: paragraph
+        ]
+    }
+
+    final class Coordinator: NSObject, UITextViewDelegate {
+        var parent: GuidanceStyledTextView
+        var wasEditable = false
+
+        init(parent: GuidanceStyledTextView) {
+            self.parent = parent
+        }
+
+        func textViewDidChange(_ textView: UITextView) {
+            parent.text = textView.text
+        }
+    }
+}
+
+private struct SessionActionButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+    let isProminent: Bool
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .font(isProminent ? .headline : .subheadline.weight(.semibold))
             .padding(.vertical, 14)
-            .foregroundStyle(.white)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.tomato.opacity(configuration.isPressed ? 0.78 : 1)))
+            .foregroundStyle(isProminent ? Color.white : (isEnabled ? Color.primary : Color.secondary))
+            .background(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(
+                        isProminent
+                            ? Color.tomato.opacity(configuration.isPressed ? 0.78 : 1)
+                            : Color.card.opacity(configuration.isPressed ? 0.65 : 1)
+                    )
+            )
             .scaleEffect(configuration.isPressed ? 0.97 : 1)
+            .opacity(isEnabled ? 1 : 0.45)
     }
 }
 

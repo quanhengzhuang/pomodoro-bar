@@ -19,7 +19,7 @@ A lightweight macOS menu bar Pomodoro timer.
 - Use a free-running timer from `00:00`, or follow a Pomodoro rhythm with 25-minute focus and 5/15-minute breaks
 - Control everything from the menu bar: start, pause, resume, extend, or end while keeping progress visible
 - Press Space while the menu is open to start, pause, or resume instantly
-- Set “Daily Guidance” as multiline plain text with automatic wrapping, and review guidance from the most recent 30 calendar days in the menu
+- Set “Daily Guidance” as multiline plain text with automatic wrapping; the editor matches the menu's 520-point width, color, font, and wrapping, and the menu retains guidance from the most recent 30 calendar days
 - Add a note to the current session and keep it with the record
 - Receive a macOS notification when a focus or break session finishes
 - Review today’s sessions with their time range, active duration, and notes
@@ -57,7 +57,7 @@ Open the project in the full Xcode application, select the `PomodoroBar` target,
 
 The iOS app supports a count-up timer, 25-minute focus, 5/15-minute breaks, pause, resume, duration adjustments, notes, and recent records. Starting a timer creates a Live Activity that shows elapsed or remaining time on the Lock Screen and in the Dynamic Island on supported iPhones. Allow notifications and make sure Live Activities are enabled under Settings > Pomodoro Bar.
 
-The quote button in the top-right corner retains the Daily Guidance viewer, and the calendar button shows non-empty guidance from the most recent 30 calendar days. On first use, select `iCloud Drive/PomodoroBar/daily-guidance.json` in the system file picker; the app only reads that file. iOS timer records stay in the app's own sandbox and never overwrite or delete Mac data.
+The quote button in the top-right corner opens Daily Guidance with visible dates. You can edit and save today's multiline entry, then scroll vertically through non-empty guidance from the most recent 30 calendar days. Editing and display states share the same warm-amber italics, font size, line spacing, padding, and wrapping width. On first use, select `iCloud Drive/PomodoroBar/daily-guidance.json` in the system file picker; saving updates only today's entry and preserves other dates. iOS timer records stay in the app's own sandbox and never overwrite or delete Mac data.
 
 ## Record Format
 
