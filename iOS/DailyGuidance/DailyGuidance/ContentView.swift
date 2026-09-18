@@ -598,29 +598,23 @@ private struct GuidanceEntryCard: View {
                 }
             }
 
-            HStack(alignment: .top, spacing: 12) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(guidanceColor)
-                    .frame(width: 4)
+            ZStack(alignment: .topLeading) {
+                // UIKit 桥接组件负责真正的文字布局；空文本时由上层叠加占位文案。
+                GuidanceStyledTextView(
+                    text: $guidance,
+                    isEditable: isEditable,
+                    textColor: UIColor(guidanceColor)
+                )
 
-                ZStack(alignment: .topLeading) {
-                    // UIKit 桥接组件负责真正的文字布局；空文本时由上层叠加占位文案。
-                    GuidanceStyledTextView(
-                        text: $guidance,
-                        isEditable: isEditable,
-                        textColor: UIColor(guidanceColor)
-                    )
-
-                    if guidance.isEmpty {
-                        Text(placeholder)
-                            .font(.title3)
-                            .italic()
-                            .foregroundStyle(isEditable ? guidanceColor.opacity(0.48) : Color.secondary)
-                            .allowsHitTesting(false)
-                    }
+                if guidance.isEmpty {
+                    Text(placeholder)
+                        .font(.title3)
+                        .italic()
+                        .foregroundStyle(isEditable ? guidanceColor.opacity(0.48) : Color.secondary)
+                        .allowsHitTesting(false)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .padding(18)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.card))
