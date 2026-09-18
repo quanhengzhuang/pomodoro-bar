@@ -608,7 +608,7 @@ private struct GuidanceEntryCard: View {
 
                 if guidance.isEmpty {
                     Text(placeholder)
-                        .font(.title3)
+                        .font(.body)
                         .italic()
                         .foregroundStyle(isEditable ? guidanceColor.opacity(0.48) : Color.secondary)
                         .allowsHitTesting(false)
@@ -731,12 +731,12 @@ private struct GuidanceStyledTextView: UIViewRepresentable {
 
     /// 显示与输入共同使用的富文本属性；数据本身仍保存为纯文本。
     private var textAttributes: [NSAttributedString.Key: Any] {
-        let baseFont = UIFont.preferredFont(forTextStyle: .title3)
+        let baseFont = UIFont.preferredFont(forTextStyle: .body)
         let italicFont = baseFont.fontDescriptor.withSymbolicTraits(.traitItalic)
             .map { UIFont(descriptor: $0, size: 0) } ?? baseFont
         let paragraph = NSMutableParagraphStyle()
-        // 与原显示样式保持 7 点额外行距。
-        paragraph.lineSpacing = 7
+        // 稍紧的行距与正文字号更协调，保留轻松的阅读节奏。
+        paragraph.lineSpacing = 5
         return [
             .font: italicFont,
             .foregroundColor: textColor,
