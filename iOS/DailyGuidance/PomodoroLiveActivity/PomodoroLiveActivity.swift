@@ -1,14 +1,22 @@
+// 锁屏实时活动与灵动岛的全部 SwiftUI 界面。
+//
+// 这是 Widget Extension 中的代码，不是主 App 页面。系统会在受限环境中渲染它，
+// 因此这里不维护业务状态，只根据 ActivityKit 传入的 attributes/state 生成界面。
 import ActivityKit
 import SwiftUI
 import WidgetKit
 
+/// 注册番茄钟实时活动的锁屏、灵动岛展开/紧凑/最小布局。
 struct PomodoroLiveActivity: Widget {
     var body: some WidgetConfiguration {
+        // `ActivityConfiguration` 的泛型必须与主 App 请求活动时使用的类型相同。
         ActivityConfiguration(for: PomodoroActivityAttributes.self) { context in
+            // 第一个闭包描述锁屏通知样式。
             LockScreenView(sessionID: context.attributes.sessionID, state: context.state)
                 .activityBackgroundTint(Color(red: 0.12, green: 0.02, blue: 0.03))
                 .activitySystemActionForegroundColor(.white)
         } dynamicIsland: { context in
+            // 灵动岛有展开、紧凑和最小三种系统决定的显示形态。
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     TomatoMark(size: 30)
@@ -23,12 +31,14 @@ struct PomodoroLiveActivity: Widget {
                         .padding(.top, 2)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
+                    // 可交互 Live Activity 按钮从 iOS 17 开始支持。
                     if #available(iOS 17.0, *) {
                         LiveActivityControls(
                             sessionID: context.attributes.sessionID,
                             state: context.state
                         )
                     } else {
+                        // iOS 16.1–16.x 只能展示状态，引导用户回主 App 操作。
                         HStack {
                             Label(
                                 context.state.isRunning ? "正在进行" : "已暂停",
@@ -43,12 +53,15 @@ struct PomodoroLiveActivity: Widget {
                     }
                 }
             } compactLeading: {
+                // App 在灵动岛紧凑形态的左半边。
                 TomatoMark(size: 19)
             } compactTrailing: {
+                // 右半边空间很窄，需要限制宽度并允许缩小文字。
                 TimerText(state: context.state, size: 15)
                     .frame(maxWidth: 54)
                     .minimumScaleFactor(0.7)
             } minimal: {
+                // 多个实时活动并存时，系统可能只显示最小圆形图标。
                 TomatoMark(size: 18)
             }
             .keylineTint(Color.tomato)
@@ -56,8 +69,11 @@ struct PomodoroLiveActivity: Widget {
     }
 }
 
+/// 锁屏上完整显示的一张实时活动卡片。
 private struct LockScreenView: View {
+    /// 交互按钮把这个 UUID 传给 App Intent，以核对操作目标。
     let sessionID: UUID
+    /// 由 ActivityKit 提供的当前动态状态。
     let state: PomodoroActivityAttributes.ContentState
 
     var body: some View {
@@ -81,6 +97,7 @@ private struct LockScreenView: View {
             }
 
             if #available(iOS 17.0, *) {
+                // 锁屏和展开灵动岛复用同一组按钮，保证行为一致。
                 LiveActivityControls(sessionID: sessionID, state: state)
             }
         }
@@ -89,6 +106,9 @@ private struct LockScreenView: View {
     }
 }
 
+/// iOS 17+ 的暂停/继续、延长和结束按钮。
+///
+/// `Button(intent:)` 不会先打开主 App，而是让系统直接执行对应 `LiveActivityIntent`。
 @available(iOS 17.0, *)
 private struct LiveActivityControls: View {
     let sessionID: UUID
@@ -96,6 +116,7 @@ private struct LiveActivityControls: View {
 
     var body: some View {
         HStack(spacing: 8) {
+            // 文案和图标根据最新 Activity 状态在“暂停/继续”之间切换。
             Button(intent: TogglePomodoroIntent(sessionID: sessionID)) {
                 Label(
                     state.isRunning ? "暂停" : "继续",
@@ -105,6 +126,7 @@ private struct LiveActivityControls: View {
             }
             .buttonStyle(LiveActivityActionButtonStyle())
 
+            // 自由计时没有计划终点，因此“加 5 分”没有意义。
             if !state.isCountUp {
                 Button(intent: AddFiveMinutesIntent(sessionID: sessionID)) {
                     Label("加 5 分", systemImage: "plus")
@@ -113,6 +135,7 @@ private struct LiveActivityControls: View {
                 .buttonStyle(LiveActivityActionButtonStyle())
             }
 
+            // 结束是不可逆的主操作，使用红色破坏性样式强调。
             Button(intent: EndPomodoroIntent(sessionID: sessionID)) {
                 Label("结束", systemImage: "stop.fill")
                     .frame(maxWidth: .infinity)
@@ -124,8 +147,10 @@ private struct LiveActivityControls: View {
     }
 }
 
+/// Live Activity 专用的胶囊按钮样式。
 @available(iOS 17.0, *)
 private struct LiveActivityActionButtonStyle: ButtonStyle {
+    /// `true` 时使用番茄红背景，当前仅用于“结束”。
     var isDestructive = false
 
     func makeBody(configuration: Configuration) -> some View {
@@ -145,6 +170,10 @@ private struct LiveActivityActionButtonStyle: ButtonStyle {
     }
 }
 
+/// 让系统根据时间区间自行刷新的计时文本。
+///
+/// 运行时使用 `Text(timerInterval:)`，无需扩展每秒执行代码；暂停时使用固定字符串，
+/// 避免系统继续推进已经冻结的计时。
 private struct TimerText: View {
     let state: PomodoroActivityAttributes.ContentState
     let size: CGFloat
@@ -152,9 +181,11 @@ private struct TimerText: View {
     var body: some View {
         Group {
             if state.isRunning, state.isCountUp {
+                // 从真实起点正向计时；使用 distantFuture 构造一个足够长的区间。
                 Text(timerInterval: state.timerStart...Date.distantFuture, countsDown: false)
             } else if state.isRunning, let timerEnd = state.timerEnd {
                 let now = Date()
+                // max 防止结束时间已过去时构造反向区间。
                 Text(timerInterval: now...max(now, timerEnd), countsDown: true)
             } else {
                 Text(formattedTime(state.pausedSeconds))
@@ -165,16 +196,19 @@ private struct TimerText: View {
         .lineLimit(1)
     }
 
+    /// 格式化暂停后的固定秒数，且不允许负数出现在界面。
     private func formattedTime(_ seconds: Int) -> String {
         String(format: "%02d:%02d", max(0, seconds) / 60, max(0, seconds) % 60)
     }
 }
 
+/// 用纯 SwiftUI 图形绘制的小番茄，避免 Widget 扩展依赖位图资源。
 private struct TomatoMark: View {
     let size: CGFloat
 
     var body: some View {
         ZStack {
+            // 红色圆形是果实，叶子使用 SF Symbol，弧线提供高光。
             Circle().fill(Color.tomato)
             Image(systemName: "leaf.fill")
                 .font(.system(size: size * 0.38, weight: .bold))
@@ -191,6 +225,7 @@ private struct TomatoMark: View {
     }
 }
 
+/// 扩展内使用的品牌色。Widget target 无法自动访问主 App 的私有 Color 扩展。
 private extension Color {
     static let tomato = Color(red: 0.89, green: 0.18, blue: 0.17)
     static let tomatoLight = Color(red: 1.0, green: 0.45, blue: 0.30)

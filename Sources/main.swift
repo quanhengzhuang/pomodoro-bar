@@ -1,11 +1,21 @@
+// Pomodoro Bar 的 macOS 菜单栏应用全部源码。
+//
+// Mac 版刻意保持为一个 AppKit 单文件程序：脚本用 swiftc 直接编译，不依赖 Xcode 工程。
+// `PomodoroController` 同时承担应用生命周期、菜单构建、计时状态机、记录/指引持久化等职责。
+// 阅读时建议先看 PomodoroMode/PomodoroRecord，再沿 MARK 区段阅读 Controller。
 import AppKit
 import Foundation
 
+/// Mac 番茄钟的倒计时模式。
+///
+/// 自由计时由 `isCountUp` 单独表示，未放进这个枚举。rawValue 主要用于内部英文名称，
+/// 写入记录文件的是更稳定的 `recordType`。
 enum PomodoroMode: String {
     case focus = "Focus"
     case shortBreak = "Short Break"
     case longBreak = "Long Break"
 
+    /// 通常完成当前模式后自动选择的下一模式。
     var next: PomodoroMode {
         switch self {
         case .focus:
@@ -15,6 +25,7 @@ enum PomodoroMode: String {
         }
     }
 
+    /// 菜单和提醒中展示的中文名称。
     var menuTitle: String {
         switch self {
         case .focus:
@@ -26,6 +37,7 @@ enum PomodoroMode: String {
         }
     }
 
+    /// records.json 中保存的稳定机器值；不要改成中文，以免破坏旧数据兼容。
     var recordType: String {
         switch self {
         case .focus:
@@ -38,15 +50,26 @@ enum PomodoroMode: String {
     }
 }
 
+/// Mac 与 iOS 共用 JSON 语义的一条完成记录。
+///
+/// 自定义 Codable 是为了同时兼容旧版 `completedAt/title/durationMinutes` 格式和当前的
+/// `startedAt/endedAt/durationSeconds/type/note` 格式。读取旧数据后再次保存会写成新格式，
+/// 但原始本地文件不会在迁移前被删除。
 struct PomodoroRecord: Codable, Hashable {
+    /// `yyyy-MM-dd HH:mm:ss`，便于用户直接阅读和按字符串排序。
     let startedAt: String
     let endedAt: String
+    /// 记录结束当天的 `yyyy-MM-dd`。
     let date: String
+    /// focus、short_break、long_break 或 count_up。
     let type: String
+    /// 精确时长是业务真相；分钟字段保留给旧版本和人工查看。
     let durationSeconds: Int
     let durationMinutes: Int
+    /// 用户输入的纯文本备注。
     let note: String
 
+    /// 同时列出新旧格式可能出现的 key。
     enum CodingKeys: String, CodingKey {
         case date
         case startedAt
@@ -59,6 +82,7 @@ struct PomodoroRecord: Codable, Hashable {
         case title
     }
 
+    /// 创建当前格式记录时统一由秒数派生分钟数。
     init(startedAt: String, endedAt: String, date: String, type: String, durationSeconds: Int, note: String) {
         self.startedAt = startedAt
         self.endedAt = endedAt
@@ -69,6 +93,10 @@ struct PomodoroRecord: Codable, Hashable {
         self.note = note
     }
 
+    /// 兼容解码入口。
+    ///
+    /// 旧记录只有 completedAt 时，用同一时间同时填充开始和结束；虽然无法恢复历史时间段，
+    /// 但可保留完成日期、时长和标题，不会丢弃用户数据。
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         if let startedAt = try container.decodeIfPresent(String.self, forKey: .startedAt),
@@ -83,6 +111,7 @@ struct PomodoroRecord: Codable, Hashable {
         }
 
         durationMinutes = try container.decode(Int.self, forKey: .durationMinutes)
+        // durationSeconds 是后来增加的字段，旧数据回退为分钟 × 60。
         durationSeconds = try container.decodeIfPresent(Int.self, forKey: .durationSeconds)
             ?? durationMinutes * 60
         type = try container.decodeIfPresent(String.self, forKey: .type) ?? "focus"
@@ -90,6 +119,7 @@ struct PomodoroRecord: Codable, Hashable {
         date = try container.decodeIfPresent(String.self, forKey: .date) ?? String(endedAt.prefix(10))
     }
 
+    /// 始终按当前可读 JSON 格式编码，不再写入历史兼容字段。
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(date, forKey: .date)
@@ -101,6 +131,7 @@ struct PomodoroRecord: Codable, Hashable {
         try container.encode(note, forKey: .note)
     }
 
+    /// 把机器 type 转换为菜单标题；未知值原样显示，便于发现新类型或损坏数据。
     var displayTitle: String {
         switch type {
         case "focus":
@@ -114,6 +145,7 @@ struct PomodoroRecord: Codable, Hashable {
         }
     }
 
+    /// 不同记录类型在菜单前使用不同圆点颜色。
     var menuDotColor: NSColor {
         switch type {
         case "focus":
@@ -125,6 +157,7 @@ struct PomodoroRecord: Codable, Hashable {
         }
     }
 
+    /// 旧格式迁移时生成稳定日期字符串。
     private static func makeDateString(from date: Date) -> String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -133,6 +166,7 @@ struct PomodoroRecord: Codable, Hashable {
         return formatter.string(from: date)
     }
 
+    /// 旧格式迁移时生成精确到秒的时间字符串。
     private static func makeDateTimeString(from date: Date) -> String {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -142,32 +176,61 @@ struct PomodoroRecord: Codable, Hashable {
     }
 }
 
+/// Mac App 的总控制器。
+///
+/// 同时实现：
+/// - `NSApplicationDelegate`：处理应用启动；
+/// - `NSMenuDelegate`：每次打开菜单前刷新 iCloud 数据；
+/// - `NSUserNotificationCenterDelegate`：前台也展示完成提醒。
 final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificationCenterDelegate, NSMenuDelegate {
+    // MARK: - 菜单栏基础对象
+
+    /// 系统菜单栏右侧的状态项；宽度随图标和时间文字变化。
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+    /// 点击状态项后展示的整张菜单。
     private let menu = NSMenu()
 
+    // MARK: - 当前计时状态
+
+    /// 仅用于每秒刷新界面；实际经过时间始终由墙钟时间差计算。
     private var timer: Timer?
+    /// 当前倒计时模式。自由计时仍保留最近模式，但由 isCountUp 覆盖语义。
     private var mode: PomodoroMode = .focus
     private var isCountUp = false
     private var isRunning = false
     private var hasActiveSession = false
+    /// 用于判断每四次专注后的长休息；当前仅统计本次进程生命周期内自动完成次数。
     private var focusSessions = 0
+    /// 无活动会话时显示的默认秒数，或调整倒计时时同步维护的剩余值。
     private var remainingSeconds = 25 * 60
+    /// 整段会话最初开始的真实时间。
     private var sessionStartedAt: Date?
+    /// 倒计时当前计划总秒数，调整时长后与模式默认值不同。
     private var sessionPlannedDurationSeconds: Int?
+    /// 最近一次暂停开始时间。
     private var sessionPausedAt: Date?
+    /// 之前所有已结束暂停片段的累计秒数。
     private var sessionPausedSeconds = 0
     private var sessionNote = ""
+
+    // MARK: - 内存数据与存储配置
+
     private var records: [PomodoroRecord] = []
+    /// daily-guidance.json 解码后的“日期 → 纯文本”字典。
     private var dailyGuidanceByDate: [String: String] = [:]
+    /// iCloud 文件解析失败后暂时标记，写入时回退本地以免覆盖损坏/未下载文件。
     private var unreadableICloudFileNames = Set<String>()
+    // 时长配置集中在这里，单位统一为秒或明确带 Minutes 后缀。
     private let focusDurationMinutes = 25
+    /// 旧版 UserDefaults 记录 key，仅用于兼容迁移。
     private let recordsStorageKey = "pomodoro.records"
+    /// iCloud 不可用时的本机回退目录。
     private let localDataDirectoryURL = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent(".pomodoro-status-bar", isDirectory: true)
     private let recordsFileName = "records.json"
     private let dailyGuidanceFileName = "daily-guidance.json"
     private let iCloudDataDirectoryName = "PomodoroBar"
+    // 今日指引显示与编辑共享这些尺寸，保证每行换行位置一致。
     private let dailyGuidanceMenuWidth: CGFloat = 520
     private let dailyGuidanceHorizontalPadding: CGFloat = 16
     private let dailyGuidanceVerticalPadding: CGFloat = 8
@@ -179,6 +242,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private let historicalDateLimit = 30
     private let dailyGuidanceHistoryDayLimit = 30
 
+    // MARK: - 复用菜单项、图标与格式化器
+
+    /// 经常改变标题/启用状态的菜单项只创建一次，重建菜单时重复挂载。
     private lazy var statusMenuItem = NSMenuItem(title: "", action: nil, keyEquivalent: "")
     private lazy var startMenuItem = NSMenuItem(
         title: "开始",
@@ -197,12 +263,14 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     )
     private lazy var tomatoStatusIcon = makeTomatoStatusIcon()
     private lazy var pauseStatusIcon = makePauseStatusIcon()
+    /// 从构建脚本复制到 App 包 Resources 的 icns 图标。
     private lazy var applicationIcon: NSImage? = {
         guard let url = Bundle.main.url(forResource: "AppIcon", withExtension: "icns") else {
             return nil
         }
         return NSImage(contentsOf: url)
     }()
+    /// 历史菜单日期后的中文星期。
     private lazy var historyWeekdayFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -211,7 +279,11 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return formatter
     }()
 
+    // MARK: - 应用生命周期
+
+    /// AppKit 完成启动后的总初始化入口。
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // accessory 模式不显示 Dock 图标和普通菜单栏，只保留状态栏入口。
         NSApp.setActivationPolicy(.accessory)
         terminateOtherInstances()
         configureApplicationIcon()
@@ -225,6 +297,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         updateStatusTitle()
     }
 
+    /// 结束同 Bundle Identifier 的旧进程，避免开发重启后菜单栏出现多个番茄。
     private func terminateOtherInstances() {
         guard let bundleIdentifier = Bundle.main.bundleIdentifier else {
             return
@@ -237,20 +310,24 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
+    /// 给系统提醒框和应用元数据设置图标。
     private func configureApplicationIcon() {
         NSApp.applicationIconImage = applicationIcon
     }
 
+    /// 创建统一带应用图标的 Alert。
     private func makeAlert() -> NSAlert {
         let alert = NSAlert()
         alert.icon = applicationIcon
         return alert
     }
 
+    /// 让旧版 NSUserNotification 在 App 前台也能交给本控制器决定展示。
     private func configureNotifications() {
         NSUserNotificationCenter.default.delegate = self
     }
 
+    /// 配置状态栏按钮、菜单代理和空格快捷键所需的菜单关系。
     private func configureStatusItem() {
         statusItem.autosaveName = "local.codex.PomodoroStatusBar.statusItem"
         statusItem.button?.font = .monospacedDigitSystemFont(ofSize: 13, weight: .medium)
@@ -259,6 +336,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         statusItem.menu = menu
     }
 
+    /// 菜单即将打开时，从磁盘重新合并数据。
+    ///
+    /// iCloud 文件可能由 iOS 或另一台 Mac 修改，不能只依赖启动时的一次加载。
     func menuNeedsUpdate(_ menu: NSMenu) {
         refreshRecordsFromDataFiles()
         loadDailyGuidance()
@@ -266,6 +346,11 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         rebuildMenu()
     }
 
+    // MARK: - 菜单构建
+
+    /// 按当前状态从头构建菜单项。
+    ///
+    /// NSMenu 项目不多，重建比逐项维护显隐状态更简单，也减少遗漏更新的风险。
     private func rebuildMenu() {
         menu.removeAllItems()
 
@@ -332,6 +417,12 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         updateStatusMenuItem()
     }
 
+    // MARK: - 计时状态机
+
+    /// 开始新计时或从暂停继续。
+    ///
+    /// 第一次开始时记录 sessionStartedAt 和计划总时长；继续时把刚结束的暂停片段累加。
+    /// Timer 只驱动界面刷新，`activeSessionSeconds` 才负责根据真实时间计算结果。
     private func startTimer() {
         let now = Date()
         isRunning = true
@@ -341,6 +432,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             sessionPlannedDurationSeconds = isCountUp ? nil : duration(for: mode)
         }
         if let sessionPausedAt {
+            // 把当前暂停片段计入总暂停时间，恢复运行后不再保留暂停起点。
             sessionPausedSeconds += max(0, Int(now.timeIntervalSince(sessionPausedAt)))
             self.sessionPausedAt = nil
         }
@@ -357,6 +449,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         rebuildMenu()
     }
 
+    /// 暂停但保留会话和备注，等待用户继续或结束。
     private func pauseTimer() {
         isRunning = false
         sessionPausedAt = Date()
@@ -366,6 +459,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         rebuildMenu()
     }
 
+    /// 完全清空当前会话，恢复为未开始状态。
+    ///
+    /// 已经写入 records 的数据不受影响。
     private func stopTimer() {
         isRunning = false
         hasActiveSession = false
@@ -380,12 +476,14 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         rebuildMenu()
     }
 
+    /// 切换预设模式并重置该模式的默认时长。
     private func setMode(_ nextMode: PomodoroMode) {
         mode = nextMode
         remainingSeconds = duration(for: nextMode)
         stopTimer()
     }
 
+    /// 从菜单快捷入口开始一个指定的倒计时模式。
     private func startMode(_ nextMode: PomodoroMode) {
         guard !hasActiveSession else {
             return
@@ -395,6 +493,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         startTimer()
     }
 
+    /// 倒计时自然归零后的完成流程：记录、选择下一模式、提示音和通知。
     private func completeCurrentMode() {
         if mode == .focus {
             focusSessions += 1
@@ -408,6 +507,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         let nextMode: PomodoroMode
         if completedMode == .focus && focusSessions > 0 && focusSessions % 4 == 0 {
+            // 标准番茄节奏：四次专注后安排长休息。
             nextMode = .longBreak
         } else {
             nextMode = completedMode.next
@@ -420,6 +520,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         showCompletionNotification(completedMode: completedMode, nextMode: nextMode)
     }
 
+    /// 返回模式默认时长，单位秒。
     private func duration(for mode: PomodoroMode) -> Int {
         switch mode {
         case .focus:
@@ -431,6 +532,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
+    /// 发送旧版 AppKit 本地通知。
+    ///
+    /// 此 API 已被系统标记 deprecated，但仍用于保持当前轻量单文件 Mac 构建；构建警告已知。
     private func showCompletionNotification(completedMode: PomodoroMode, nextMode: PomodoroMode) {
         let notification = NSUserNotification()
         notification.title = completedMode == .focus ? "专注完成" : "休息完成"
@@ -440,6 +544,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         NSUserNotificationCenter.default.deliver(notification)
     }
 
+    /// 即使 App 当前活跃，也允许系统展示通知。
     func userNotificationCenter(
         _ center: NSUserNotificationCenter,
         shouldPresent notification: NSUserNotification
@@ -447,6 +552,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         true
     }
 
+    // MARK: - 状态栏显示
+
+    /// 根据当前会话生成菜单栏的番茄/暂停图标和 `MM:SS` 文本。
     private func updateStatusTitle() {
         let displaySeconds: Int
         if isCountUp, hasActiveSession {
@@ -462,11 +570,13 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         let title = NSMutableAttributedString()
 
         let iconAttachment = NSTextAttachment()
+        // 未开始时显示番茄；活动中根据运行/暂停切换图标。
         iconAttachment.image = isRunning || !hasActiveSession ? tomatoStatusIcon : pauseStatusIcon
         iconAttachment.bounds = NSRect(x: 0, y: -2.5, width: 15, height: 15)
         title.append(NSAttributedString(attachment: iconAttachment))
 
         if isRunning || hasActiveSession {
+            // 未开始时只显示图标，减少菜单栏占用。
             title.append(NSAttributedString(
                 string: " \(String(format: "%02d:%02d", minutes, seconds))",
                 attributes: [
@@ -480,6 +590,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         updateStatusMenuItem()
     }
 
+    /// 用 AppKit 绘图 API 在内存中生成非模板番茄图标。
+    ///
+    /// 非模板图可保留红绿颜色；若设为模板图，系统会自动改为单色。
     private func makeTomatoStatusIcon() -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size)
@@ -509,6 +622,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return image
     }
 
+    /// 生成暂停状态的双竖条图标。
     private func makePauseStatusIcon() -> NSImage {
         let size = NSSize(width: 18, height: 18)
         let image = NSImage(size: size)
@@ -529,6 +643,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return image
     }
 
+    /// 更新菜单第一行的详细状态文字。
     private func updateStatusMenuItem() {
         let state: String
         if isRunning {
@@ -551,6 +666,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         statusMenuItem.title = "\(timerTitle) · \(state) · \(String(format: "%02d:%02d", minutes, seconds))\(noteSuffix)"
     }
 
+    // MARK: - 今日指引显示与持久化
+
+    /// 把今天的指引正文和设置/修改入口加入主菜单。
     private func addDailyGuidanceMenuItems() {
         let guidance = dailyGuidanceByDate[todayDateKey] ?? ""
         if !guidance.isEmpty {
@@ -569,6 +687,10 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         menu.addItem(editItem)
     }
 
+    /// 创建能完整自动换行的自定义 NSMenuItem 内容视图。
+    ///
+    /// 普通 NSMenuItem.title 不适合多行长文本，因此使用只读 NSTextView，并通过
+    /// LayoutManager 计算实际高度。宽度、边距和字体与编辑框共享常量。
     private func makeDailyGuidanceMenuView(text: String) -> NSView {
         let contentWidth = dailyGuidanceMenuWidth - dailyGuidanceHorizontalPadding * 2
         let body = NSTextView(frame: NSRect(
@@ -598,6 +720,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         let bodyHeight: CGFloat
         if let textContainer = body.textContainer, let layoutManager = body.layoutManager {
+            // 强制 TextKit 完成布局后才能得到所有换行后的真实高度。
             layoutManager.ensureLayout(for: textContainer)
             bodyHeight = max(ceil(layoutManager.usedRect(for: textContainer).height) + 2, baseFont.pointSize + 3)
         } else {
@@ -611,6 +734,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return container
     }
 
+    /// 展示和编辑共用的文字属性，确保颜色、字号和斜体一致。
     private var dailyGuidanceTextAttributes: [NSAttributedString.Key: Any] {
         [
             .font: NSFont.menuFont(ofSize: 0),
@@ -619,6 +743,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         ]
     }
 
+    /// 根据当前 Mac 外观选择有足够对比度的暖黄色。
     private var dailyGuidanceColor: NSColor {
         let appearance = NSApp.effectiveAppearance.bestMatch(from: [.aqua, .darkAqua])
         if appearance == .darkAqua {
@@ -627,6 +752,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return NSColor(calibratedRed: 0.58, green: 0.39, blue: 0.05, alpha: 1)
     }
 
+    /// 从本地回退目录和 iCloud 读取今日指引并按文件修改时间合并。
+    ///
+    /// 较新的文件值覆盖较旧文件的同日期值；这样从本地迁移到 iCloud 时不会直接丢历史。
     private func loadDailyGuidance() {
         var storedGuidance: [(modifiedAt: Date, values: [String: String])] = []
 
@@ -650,11 +778,13 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         var mergedGuidance: [String: String] = [:]
         for stored in storedGuidance.sorted(by: { $0.modifiedAt < $1.modifiedAt }) {
+            // 从旧到新 merge，使闭包选择 newer 时得到最后修改文件的值。
             mergedGuidance.merge(stored.values) { _, newer in newer }
         }
         dailyGuidanceByDate = mergedGuidance
     }
 
+    /// 把完整日期字典编码为可读、按 key 排序的 JSON，并写到首个可用目录。
     @discardableResult
     private func saveDailyGuidance(_ values: [String: String]) -> URL? {
         let encoder = JSONEncoder()
@@ -670,6 +800,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
+    /// 本地回退文件比 iCloud 新时，把合并结果同步回 iCloud。
     private func synchronizeDailyGuidanceToICloudIfNeeded() {
         guard shouldSynchronizeFallbackFileToICloud(named: dailyGuidanceFileName) else {
             return
@@ -677,6 +808,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         _ = saveDailyGuidance(dailyGuidanceByDate)
     }
 
+    /// 菜单打开时分别检查 records 和 guidance 是否需要回迁 iCloud。
     private func synchronizeFallbackDataToICloudIfNeeded() {
         if shouldSynchronizeFallbackFileToICloud(named: recordsFileName) {
             _ = saveRecords()
@@ -684,10 +816,14 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         synchronizeDailyGuidanceToICloudIfNeeded()
     }
 
+    /// 今天对应的 JSON 日期 key。
     private var todayDateKey: String {
         recordDateFormatter.string(from: Date())
     }
 
+    // MARK: - 记录菜单
+
+    /// 构建今日摘要、今日记录、最近 30 天历史、今日指引历史和打开文件入口。
     private func addRecordsMenuItems() {
         let today = recordDateFormatter.string(from: Date())
         let insideItem = NSMenuItem(title: "番茄内时间：\(formattedPomodoroTimeToday())", action: nil, keyEquivalent: "")
@@ -705,6 +841,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             menu.addItem(emptyItem)
         } else {
             let reversedRecords = Array(todayRecords.reversed())
+            // 主菜单只放最近几条，避免菜单过长；全部记录仍可进入子菜单查看。
             let recentRecords = Array(reversedRecords.prefix(collapsedRecordsLimit))
 
             for record in recentRecords {
@@ -727,6 +864,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         menu.addItem(todayRecordsItem)
 
         let historicalRecords = records.filter { $0.date != today }
+        // 先按日期分组，再对日期倒序，形成“日期 → 当天记录”的两级菜单。
         let historicalRecordsByDate = Dictionary(grouping: historicalRecords, by: \PomodoroRecord.date)
         let historicalDates = historicalRecordsByDate.keys.sorted(by: >)
         let visibleHistoricalDates = historicalDates.prefix(historicalDateLimit)
@@ -763,6 +901,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             }
 
             if olderDateCount > 0 {
+                // 超过 30 天的数据没有删除，只是不继续铺开菜单；用户可打开 JSON 查看。
                 historyMenu.addItem(.separator())
                 let olderRecordsItem = NSMenuItem(
                     title: "更早记录（共 \(olderDateCount) 天）...",
@@ -783,6 +922,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         menu.addItem(openRecordsItem)
     }
 
+    /// 添加最近 30 个自然日内非空的今日指引历史子菜单。
     private func addDailyGuidanceHistoryMenuItem() {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .current
@@ -800,6 +940,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             }
 
             let startOfDate = calendar.startOfDay(for: date)
+            // 排除未来日期和 30 天窗口之前的数据，但绝不修改原字典。
             guard startOfDate >= earliestVisibleDate, startOfDate <= today else {
                 return nil
             }
@@ -827,6 +968,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
                     keyEquivalent: ""
                 )
                 let dateMenu = NSMenu()
+                // 复用今天正文的 520 点多行视图，历史展示样式完全一致。
                 let guidanceItem = NSMenuItem()
                 guidanceItem.view = makeDailyGuidanceMenuView(text: entry.text)
                 guidanceItem.isEnabled = false
@@ -840,6 +982,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         menu.addItem(historyItem)
     }
 
+    /// 组合带彩色圆点的富文本菜单标题。
     private func recordMenuTitle(dotColor: NSColor, text: String) -> NSAttributedString {
         let title = NSMutableAttributedString()
         title.append(NSAttributedString(
@@ -859,6 +1002,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return title
     }
 
+    /// 把一条记录格式化后加入指定菜单。
     private func addRecordMenuItem(_ record: PomodoroRecord, to targetMenu: NSMenu) {
         let noteSuffix = record.note.isEmpty ? "" : " · \(record.note)"
         let item = NSMenuItem(title: "", action: nil, keyEquivalent: "")
@@ -870,10 +1014,12 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         targetMenu.addItem(item)
     }
 
+    /// 从完整日期时间中截取到分钟，用于菜单紧凑显示。
     private func menuTimeText(_ dateTime: String) -> String {
         String(dateTime.prefix(16))
     }
 
+    /// 拼出 `yyyy-MM-dd HH:mm-HH:mm` 的时间范围。
     private func menuTimeRangeText(_ record: PomodoroRecord) -> String {
         let startedAt = menuTimeText(record.startedAt)
         let endedAt = menuTimeText(record.endedAt)
@@ -881,10 +1027,16 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return "\(startedAt)-\(endTime)"
     }
 
+    /// 菜单只展示整分钟；JSON 仍保留精确秒数。
     private func recordDurationMinutes(_ record: PomodoroRecord) -> Int {
         record.durationSeconds / 60
     }
 
+    // MARK: - 当前会话时间计算
+
+    /// 计算当前会话真正运行的秒数，扣除所有暂停片段。
+    ///
+    /// 使用开始/暂停时间差而不是 Timer tick 次数，因此系统睡眠或主线程繁忙不会造成漂移。
     private func activeSessionSeconds(at date: Date = Date()) -> Int {
         guard let sessionStartedAt else {
             return 0
@@ -892,6 +1044,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         var pausedSeconds = sessionPausedSeconds
         if let sessionPausedAt {
+            // 当前仍处于暂停时，把尚未结算的暂停片段也临时计入。
             pausedSeconds += max(0, Int(date.timeIntervalSince(sessionPausedAt)))
         }
 
@@ -899,6 +1052,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return max(0, elapsedSeconds - pausedSeconds)
     }
 
+    // MARK: - 记录读取、合并与写入
+
+    /// 把当前会话转换为记录并触发保存。
     private func addTimerRecord(type: String, durationSeconds: Int) {
         let startedAt = sessionStartedAt ?? Date().addingTimeInterval(-TimeInterval(durationSeconds))
         let endedAt = Date()
@@ -913,6 +1069,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         saveRecords()
     }
 
+    /// 启动时读取本地/iCloud记录，并兼容迁移旧 UserDefaults 数据。
     private func loadRecords() {
         var recordGroups = loadRecordGroupsFromDataFiles()
 
@@ -927,10 +1084,12 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
 
         if saveRecords() != nil, legacyRecords != nil {
+            // 只有新 JSON 成功保存后才删除旧 UserDefaults，避免迁移失败造成数据丢失。
             UserDefaults.standard.removeObject(forKey: recordsStorageKey)
         }
     }
 
+    /// 菜单打开时吸收磁盘上的新记录，同时保留当前内存中尚未出现的记录。
     private func refreshRecordsFromDataFiles() {
         let storedRecordGroups = loadRecordGroupsFromDataFiles()
         guard !storedRecordGroups.isEmpty else {
@@ -939,12 +1098,14 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         records = mergeRecordGroups(storedRecordGroups + [records])
     }
 
+    /// 保存前再次合并磁盘，减少多来源写入时相互覆盖的概率。
     @discardableResult
     private func saveRecords() -> URL? {
         records = mergeRecordGroups(loadRecordGroupsFromDataFiles() + [records])
         return writeDataFile(Data(renderRecordsJSON().utf8), named: recordsFileName)
     }
 
+    /// 分别读取所有候选 records.json；单个文件损坏不会阻止读取另一个。
     private func loadRecordGroupsFromDataFiles() -> [[PomodoroRecord]] {
         var recordGroups: [[PomodoroRecord]] = []
 
@@ -966,6 +1127,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return recordGroups
     }
 
+    /// 对多组记录去重并按结束时间、开始时间稳定排序。
+    ///
+    /// PomodoroRecord 遵循 Hashable，因此字段完全相同的记录只保留一份。
     private func mergeRecordGroups(_ groups: [[PomodoroRecord]]) -> [PomodoroRecord] {
         var seenRecords = Set<PomodoroRecord>()
         var mergedRecords: [PomodoroRecord] = []
@@ -984,6 +1148,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
+    /// 手工渲染可读 JSON，以固定字段顺序和空格风格。
+    ///
+    /// JSONEncoder 不保证字段顺序；这里稳定输出便于用户手工维护和版本比较。
     private func renderRecordsJSON() -> String {
         guard !records.isEmpty else {
             return "[]\n"
@@ -1006,6 +1173,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return "[\n" + renderedRecords.joined(separator: ",\n") + "\n]\n"
     }
 
+    /// 按 JSON 标准转义字符串中的引号、反斜线、换行和控制字符。
     private func jsonEscaped(_ value: String) -> String {
         var escaped = ""
         for scalar in value.unicodeScalars {
@@ -1031,20 +1199,26 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return escaped
     }
 
+    // MARK: - 今日时间统计
+
+    /// 从当天第一次计时开始到现在，扣除番茄内时长，得到“番茄外时间”。
     private func formattedOutsidePomodoroTimeToday() -> String {
         let seconds = outsidePomodoroSecondsToday()
         return formattedDuration(seconds)
     }
 
+    /// 今天已记录和正在进行的所有会话总时长。
     private func formattedPomodoroTimeToday() -> String {
         let seconds = pomodoroSecondsToday()
         return formattedDuration(seconds)
     }
 
+    /// 把秒数转换为用户可读的小时和分钟。
     private func formattedDuration(_ seconds: Int) -> String {
         return "\(seconds / 3600) 小时 \((seconds % 3600) / 60) 分钟"
     }
 
+    /// 计算从今天首次番茄开始后，没有落在番茄记录中的时间。
     private func outsidePomodoroSecondsToday() -> Int {
         guard let firstStart = firstPomodoroStartToday() else {
             return 0
@@ -1054,6 +1228,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return max(0, elapsedSinceFirstStart - pomodoroSecondsToday())
     }
 
+    /// 在完成记录和当前会话中寻找今天最早的开始时间。
     private func firstPomodoroStartToday() -> Date? {
         let today = recordDateFormatter.string(from: Date())
         var firstStart: Date?
@@ -1077,6 +1252,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return firstStart
     }
 
+    /// 合计今天完成记录和当前活动会话的运行秒数。
     private func pomodoroSecondsToday() -> Int {
         let today = recordDateFormatter.string(from: Date())
         var pomodoroSeconds = 0
@@ -1092,6 +1268,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return pomodoroSeconds
     }
 
+    /// 读取早期版本保存在 UserDefaults 的记录，供一次性迁移。
     private func loadLegacyRecordsFromUserDefaults() -> [PomodoroRecord]? {
         guard let data = UserDefaults.standard.data(forKey: recordsStorageKey) else {
             return nil
@@ -1101,11 +1278,17 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return try? decoder.decode([PomodoroRecord].self, from: data)
     }
 
+    // MARK: - iCloud 与本地回退目录
+
+    /// 当前用户 iCloud Drive 在 macOS 文件系统中的标准容器位置。
+    ///
+    /// 这里不会主动创建 iCloud 根目录；若用户未启用 iCloud Drive，就使用本地回退目录。
     private var iCloudDriveDirectoryURL: URL {
         FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs", isDirectory: true)
     }
 
+    /// iCloud Drive 可用时返回 `PomodoroBar/` 子目录，否则返回 nil。
     private var iCloudDataDirectoryURL: URL? {
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(
@@ -1119,6 +1302,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             .appendingPathComponent(iCloudDataDirectoryName, isDirectory: true)
     }
 
+    /// 返回读取候选：先本地、后 iCloud。
+    ///
+    /// 调用者通常会同时读出并合并，而不是“找到一个就停止”，以兼容迁移中的两份数据。
     private func readableDataFileURLs(named fileName: String) -> [URL] {
         var fileURLs = [localDataDirectoryURL.appendingPathComponent(fileName)]
         if let iCloudDataDirectoryURL {
@@ -1127,6 +1313,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return fileURLs
     }
 
+    /// 判断 URL 是否正好位于本应用的 iCloud 数据目录。
     private func isICloudDataFile(_ fileURL: URL) -> Bool {
         guard let iCloudDataDirectoryURL else {
             return false
@@ -1135,18 +1322,23 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             == iCloudDataDirectoryURL.standardizedFileURL
     }
 
+    /// 某个 iCloud 文件成功读取后，解除本次运行期间的写入回避标记。
     private func markICloudFileReadable(_ fileURL: URL) {
         if isICloudDataFile(fileURL) {
             unreadableICloudFileNames.remove(fileURL.lastPathComponent)
         }
     }
 
+    /// iCloud 文件存在但不可读/JSON 损坏时做标记，防止随后保存直接覆盖它。
     private func markICloudFileUnreadable(_ fileURL: URL) {
         if isICloudDataFile(fileURL) {
             unreadableICloudFileNames.insert(fileURL.lastPathComponent)
         }
     }
 
+    /// 返回按优先级排列的写入目标。
+    ///
+    /// 正常只写 iCloud；iCloud 不可用或该文件本次读取失败时写本地回退目录。
     private func writableDataFileURLs(named fileName: String) -> [URL] {
         let localFileURL = localDataDirectoryURL.appendingPathComponent(fileName)
         guard let iCloudDataDirectoryURL,
@@ -1157,6 +1349,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return [iCloudDataDirectoryURL.appendingPathComponent(fileName), localFileURL]
     }
 
+    /// 判断本地回退文件是否需要同步到 iCloud。
+    ///
+    /// iCloud 文件不存在或本地修改时间更新时才同步；不会删除本地原文件。
     private func shouldSynchronizeFallbackFileToICloud(named fileName: String) -> Bool {
         guard let iCloudDataDirectoryURL,
               !unreadableICloudFileNames.contains(fileName) else {
@@ -1176,11 +1371,15 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return modificationDate(of: localFileURL) > modificationDate(of: iCloudFileURL)
     }
 
+    /// 获取文件修改时间；读取失败用 distantPast，使有效文件自然获胜。
     private func modificationDate(of fileURL: URL) -> Date {
         let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
         return attributes?[.modificationDate] as? Date ?? .distantPast
     }
 
+    /// 原子写入第一个可用目标，并返回实际 URL。
+    ///
+    /// `Data.write(.atomic)` 先写临时文件再替换，减少进程中断留下半份 JSON 的风险。
     @discardableResult
     private func writeDataFile(_ data: Data, named fileName: String) -> URL? {
         for fileURL in writableDataFileURLs(named: fileName) {
@@ -1199,12 +1398,16 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return nil
     }
 
+    // MARK: - JSON 与日期工具
+
+    /// 记录解码器保留早期 ISO8601 Date 兼容策略。
     private var recordsDecoder: JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         return decoder
     }
 
+    /// JSON 日期 key 的固定公历格式。
     private var recordDateFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -1213,6 +1416,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return formatter
     }
 
+    /// 记录起止时间的固定格式。
     private var recordDateTimeFormatter: DateFormatter {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -1221,8 +1425,12 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         return formatter
     }
 
+    // MARK: - NSMenu actions
+
+    /// 前台 Timer 每秒调用的选择器。
     @objc private func tick() {
         if isCountUp {
+            // 自由计时没有归零条件，只需刷新状态栏。
             updateStatusTitle()
             return
         }
@@ -1242,6 +1450,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
+    /// 从 00:00 开始自由正计时。
     @objc private func startCountUpTimer() {
         guard !hasActiveSession else {
             return
@@ -1253,6 +1462,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         startTimer()
     }
 
+    /// 空格快捷键入口：无会话时开始自由计时，有会话时暂停/继续。
     @objc private func toggleTimer() {
         guard hasActiveSession else {
             startCountUpTimer()
@@ -1261,6 +1471,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         isRunning ? pauseTimer() : startTimer()
     }
 
+    /// 用户手动结束当前会话。
+    ///
+    /// 小于三分钟时二次确认且不写记录；达到门槛才持久化。
     @objc private func endCurrentSession() {
         guard hasActiveSession else {
             return
@@ -1292,6 +1505,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         stopTimer()
     }
 
+    /// 使用简单单行 Alert 编辑当前时段备注。
     @objc private func editSessionNote() {
         let alert = makeAlert()
         alert.messageText = "本段备注"
@@ -1311,6 +1525,10 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
+    /// 使用多行 NSTextView 编辑今天的指引。
+    ///
+    /// 编辑框与菜单显示共用宽度、边距和 attributed-string 属性，因此同一文本换行一致。
+    /// 保存前重新加载文件，尽量合并其他设备刚写入的日期；失败时恢复内存旧值。
     @objc private func editDailyGuidance() {
         let alert = makeAlert()
         alert.messageText = "今日指引"
@@ -1333,6 +1551,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         scrollView.layer?.borderColor = NSColor.separatorColor.cgColor
 
         let textView = NSTextView(frame: scrollView.contentView.bounds)
+        // TextView 宽度固定，垂直方向允许内容增长并由外层 ScrollView 滚动。
         textView.minSize = NSSize(width: dailyGuidanceMenuWidth, height: scrollView.contentSize.height)
         textView.maxSize = NSSize(width: dailyGuidanceMenuWidth, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainerInset = NSSize(
@@ -1347,6 +1566,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         textView.autoresizingMask = [.width]
         textView.textContainer?.lineFragmentPadding = 0
         textView.textContainer?.widthTracksTextView = false
+        // 明确使用和菜单正文相同的“可排版内容宽度”。
         textView.textContainer?.containerSize = NSSize(
             width: dailyGuidanceMenuWidth - dailyGuidanceHorizontalPadding * 2,
             height: CGFloat.greatestFiniteMagnitude
@@ -1369,6 +1589,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
 
         let guidance = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
+        // 重新读盘后只覆盖今天，保留刚从其他来源同步来的日期。
         loadDailyGuidance()
         let previousGuidance = dailyGuidanceByDate
         if guidance.isEmpty {
@@ -1386,6 +1607,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         rebuildMenu()
     }
 
+    /// 保存失败时显示不会自动关闭或覆盖数据的明确提示。
     private func showDailyGuidanceSaveError() {
         let alert = makeAlert()
         alert.messageText = "无法保存今日指引"
@@ -1395,6 +1617,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         alert.runModal()
     }
 
+    /// 先保存/合并记录，再用系统默认应用打开实际 JSON 文件。
     @objc private func openRecordsFile() {
         let existingFileURL = readableDataFileURLs(named: recordsFileName)
             .reversed()
@@ -1419,6 +1642,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
+    /// 菜单模式快捷入口。
     @objc private func selectFocus() {
         startMode(.focus)
     }
@@ -1431,6 +1655,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         startMode(.longBreak)
     }
 
+    /// 弹窗调整活动倒计时的计划总长度。
     @objc private func adjustActiveCountdown() {
         guard hasActiveSession && !isCountUp else {
             return
@@ -1456,6 +1681,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             }
 
             let adjustmentSeconds = minutes * 60
+            // 不能把总时长缩到已经运行时间之前，否则剩余时间会为零或负数。
             guard remainingSeconds + adjustmentSeconds > 0 else {
                 showInvalidAdjustmentDurationAlert()
                 return
@@ -1469,6 +1695,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
+    /// 所有时长输入错误共用的提示。
     private func showInvalidAdjustmentDurationAlert() {
         let alert = makeAlert()
         alert.messageText = "调整时长无效"
@@ -1478,11 +1705,15 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         alert.runModal()
     }
 
+    /// 退出菜单栏应用。
     @objc private func quit() {
         NSApp.terminate(nil)
     }
 }
 
+// MARK: - 手工启动 AppKit 事件循环
+
+// 此项目没有 @main App 类型；swiftc 编译 main.swift 后从这些顶层语句开始执行。
 let app = NSApplication.shared
 let delegate = PomodoroController()
 app.delegate = delegate

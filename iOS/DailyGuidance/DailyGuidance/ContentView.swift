@@ -1,13 +1,23 @@
+// iOS 主界面与“今日指引”界面。
+//
+// 本文件主要描述视图结构和短暂的交互状态；计时业务在 PomodoroStore，文件读写在
+// GuidanceStore。保持这种分工后，修改颜色或布局不会意外改变计时和数据逻辑。
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// App 首页：模式选择、计时盘、控制按钮、今日统计和最近记录。
 struct ContentView: View {
+    /// 由 App 入口创建并注入；ObservedObject 表示本视图不拥有其生命周期。
     @ObservedObject var store: PomodoroStore
     @ObservedObject var guidanceStore: GuidanceStore
 
+    /// 深浅色用于选择可读的品牌色。
     @Environment(\.colorScheme) private var colorScheme
+    /// 用户开启“减少动态效果”时禁用进度环动画。
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// 随系统动态字体缩放计时数字，同时保持相对 largeTitle 的视觉层级。
     @ScaledMetric(relativeTo: .largeTitle) private var timerFontSize = 56
+    // 以下 State 只属于当前页面交互，不需要写入业务 Store。
     @State private var isSelectingGuidance = false
     @State private var isShowingGuidance = false
     @State private var isEditingNote = false
@@ -37,6 +47,7 @@ struct ContentView: View {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         if guidanceStore.hasSelectedFile {
+                            // 每次打开前重新读文件，以看到 Mac/iCloud 的最新修改。
                             guidanceStore.refresh()
                             isShowingGuidance = true
                         } else {
@@ -55,6 +66,7 @@ struct ContentView: View {
             allowedContentTypes: [.json],
             allowsMultipleSelection: false
         ) { result in
+            // 用户取消选择时 result 不是 success，保持原状态即可。
             guard case .success(let urls) = result, let url = urls.first else { return }
             guidanceStore.selectFile(url)
             isShowingGuidance = true
@@ -77,6 +89,7 @@ struct ContentView: View {
                 .keyboardType(.numbersAndPunctuation)
             Button("取消", role: .cancel) {}
             Button("调整") {
+                // 同时限制输入范围，并把具体“调整后是否仍有剩余时间”的判断交给 Store。
                 guard let minutes = Int(adjustmentMinutes), (-180...180).contains(minutes),
                       store.adjustCountdown(minutes: minutes) else {
                     showInvalidAdjustment = true
@@ -101,6 +114,9 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - 首页组成部分
+
+    /// 四种计时模式的横向选择器。
     private var modePicker: some View {
         HStack(spacing: 8) {
             ForEach(store.modeOptions) { mode in
@@ -123,18 +139,21 @@ struct ContentView: View {
                     )
                 }
                 .buttonStyle(.plain)
+                // 活动会话中禁止换模式，否则当前计时字段的语义会突然改变。
                 .disabled(store.hasActiveSession)
                 .opacity(store.hasActiveSession && store.selectedMode != mode ? 0.45 : 1)
             }
         }
     }
 
+    /// 番茄形环形进度、状态、时间、模式和备注。
     private var timerFace: some View {
         ZStack {
             Circle()
                 .stroke(Color.tomato.opacity(0.12), lineWidth: 22)
 
             Circle()
+                // 至少绘制极短弧线，使 0 进度时仍有明确的起点。
                 .trim(from: 0, to: max(0.002, store.progress))
                 .stroke(
                     AngularGradient(colors: [.tomatoDark, .tomato, .tomatoLight, .tomato], center: .center),
@@ -144,6 +163,7 @@ struct ContentView: View {
                 .animation(reduceMotion ? nil : .easeInOut(duration: 0.35), value: store.progress)
 
             ForEach(0..<8, id: \.self) { index in
+                // 八个刻度每隔 45 度放置一次。
                 Capsule()
                     .fill(Color.tomato.opacity(0.20))
                     .frame(width: 3, height: 11)
@@ -184,9 +204,11 @@ struct ContentView: View {
         .frame(width: 278, height: 278)
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
+        // VoiceOver 将整个计时盘读成一条有意义的句子，而不是逐个朗读装饰图形。
         .accessibilityLabel("\(store.selectedMode.title)，\(formattedTime(store.displaySeconds))，\(statusText)")
     }
 
+    /// 备注、主操作、结束和调整时长按钮。
     private var controls: some View {
         VStack(spacing: 14) {
             HStack(spacing: 12) {
@@ -229,6 +251,7 @@ struct ContentView: View {
         }
     }
 
+    /// 当天专注时长、记录数量和 Live Activity 状态摘要。
     private var todaySummary: some View {
         HStack(spacing: 0) {
             summaryCell(value: formattedDuration(store.todayFocusSeconds), label: "今日专注")
@@ -241,6 +264,7 @@ struct ContentView: View {
         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.card))
     }
 
+    /// 最多显示 Store 提供的五条最近记录；无记录时完全隐藏区域。
     @ViewBuilder
     private var recentRecords: some View {
         if !store.recentRecords.isEmpty {
@@ -272,6 +296,7 @@ struct ContentView: View {
         }
     }
 
+    /// 三列摘要中复用的单元格。
     private func summaryCell(value: String, label: String) -> some View {
         VStack(spacing: 4) {
             Text(value)
@@ -284,6 +309,7 @@ struct ContentView: View {
         .frame(maxWidth: .infinity)
     }
 
+    /// 很淡的品牌色渐变，在深浅色模式中都以系统背景为主。
     private var background: some View {
         LinearGradient(
             colors: [Color(uiColor: .systemBackground), Color.tomato.opacity(0.035)],
@@ -292,6 +318,8 @@ struct ContentView: View {
         )
         .ignoresSafeArea()
     }
+
+    // MARK: - 首页显示文本
 
     private var statusText: String {
         guard store.hasActiveSession else { return "准备开始" }
@@ -320,14 +348,20 @@ struct ContentView: View {
     }
 }
 
+// MARK: - 今日指引 Sheet
+
+/// 今日指引的模态页面，负责文件状态、编辑会话、保存/取消工具栏和错误提示。
 private struct GuidanceSheet: View {
     @ObservedObject var store: GuidanceStore
     let selectAnotherFile: () -> Void
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
+    /// 当前编辑框内容。只有点击保存时才写入 GuidanceStore。
     @State private var draftGuidance = ""
+    /// 非 nil 表示正在编辑该日期；同时也决定工具栏切换到保存/取消。
     @State private var editingDateKey: String?
+    /// 用于判断草稿是否真的变化，从而禁用无意义的保存按钮。
     @State private var editingOriginalGuidance = ""
 
     var body: some View {
@@ -339,6 +373,7 @@ private struct GuidanceSheet: View {
                 case .loading:
                     ProgressView("正在读取今日指引…")
                 case .content, .empty:
+                    // 今天为空并不代表历史为空，所以两种状态都展示时间流。
                     GuidanceTimelineView(
                         store: store,
                         draftGuidance: $draftGuidance,
@@ -368,6 +403,7 @@ private struct GuidanceSheet: View {
                             }
                         }
                         .fontWeight(.semibold)
+                        // 没有改动时不写文件，减少 iCloud 无意义同步。
                         .disabled(draftGuidance == editingOriginalGuidance)
                     } else {
                         if canEditGuidance {
@@ -387,9 +423,11 @@ private struct GuidanceSheet: View {
             }
         }
         .onAppear {
+            // Sheet 首次出现时让草稿与 Store 对齐。
             draftGuidance = store.todayGuidance
         }
         .onChange(of: store.todayGuidance) { guidance in
+            // 编辑过程中不要用外部刷新覆盖用户尚未保存的输入。
             if !isEditing {
                 draftGuidance = guidance
             }
@@ -404,6 +442,7 @@ private struct GuidanceSheet: View {
         }
     }
 
+    /// 文件未选择、读取失败等状态共用的说明页面。
     private func stateView(symbol: String, title: String, message: String) -> some View {
         VStack(spacing: 14) {
             Image(systemName: symbol).font(.system(size: 40, weight: .light)).foregroundStyle(guidanceColor)
@@ -414,12 +453,14 @@ private struct GuidanceSheet: View {
         .padding(30)
     }
 
+    /// 与正文相同的暖黄色，用于状态图标。
     private var guidanceColor: Color {
         colorScheme == .dark
             ? Color(red: 0.98, green: 0.73, blue: 0.22)
             : Color(red: 0.58, green: 0.39, blue: 0.05)
     }
 
+    /// 只有文件已成功读取后才允许进入编辑，避免在错误状态下覆盖文件。
     private var canEditGuidance: Bool {
         switch store.state {
         case .content, .empty:
@@ -429,16 +470,19 @@ private struct GuidanceSheet: View {
         }
     }
 
+    /// 用一个可选日期表达编辑状态，比额外维护 Bool 更不易出现不同步。
     private var isEditing: Bool {
         editingDateKey != nil
     }
 
+    /// 进入某一天的编辑模式，同时保存原文以支持变更检测。
     private func beginEditing(_ dateKey: String, _ guidance: String) {
         draftGuidance = guidance
         editingOriginalGuidance = guidance
         editingDateKey = dateKey
     }
 
+    /// 退出编辑并恢复今天的最新内容；不会自行保存。
     private func finishEditing() {
         editingDateKey = nil
         editingOriginalGuidance = ""
@@ -446,6 +490,9 @@ private struct GuidanceSheet: View {
     }
 }
 
+/// 最近 30 天的纵向时间流。
+///
+/// 平时一次展示所有卡片；进入编辑后只保留目标卡片，避免键盘出现时用户误编辑错日期。
 private struct GuidanceTimelineView: View {
     @ObservedObject var store: GuidanceStore
     @Binding var draftGuidance: String
@@ -470,10 +517,12 @@ private struct GuidanceTimelineView: View {
         }
     }
 
+    /// 今天固定单独置顶，所以从历史数组排除今天，避免重复卡片。
     private var pastEntries: [GuidanceHistoryEntry] {
         store.historyEntries.filter { $0.dateKey != store.todayDateKey }
     }
 
+    /// 非编辑状态下的完整时间流内容。
     @ViewBuilder
     private var timeline: some View {
         GuidanceEntryCard(
@@ -503,6 +552,7 @@ private struct GuidanceTimelineView: View {
         }
     }
 
+    /// 构造当前正在编辑的单张卡片。
     private func editableCard(date: Date, isToday: Bool) -> some View {
         GuidanceEntryCard(
             date: date,
@@ -514,6 +564,10 @@ private struct GuidanceTimelineView: View {
     }
 }
 
+/// 时间流中的日期卡片。
+///
+/// 展示和编辑共用相同的 `GuidanceStyledTextView`，因此颜色、字体、行距、内容宽度和
+/// 自动换行位置完全一致，只通过 `isEditable` 切换输入能力。
 private struct GuidanceEntryCard: View {
     let date: Date
     @Binding var guidance: String
@@ -534,6 +588,7 @@ private struct GuidanceEntryCard: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(guidanceColor)
                 } else if let onEdit {
+                    // 历史日期可直接进入编辑；今天的编辑入口放在顶栏，减少重复按钮。
                     Button(action: onEdit) {
                         Image(systemName: "square.and.pencil")
                     }
@@ -549,6 +604,7 @@ private struct GuidanceEntryCard: View {
                     .frame(width: 4)
 
                 ZStack(alignment: .topLeading) {
+                    // UIKit 桥接组件负责真正的文字布局；空文本时由上层叠加占位文案。
                     GuidanceStyledTextView(
                         text: $guidance,
                         isEditable: isEditable,
@@ -570,12 +626,14 @@ private struct GuidanceEntryCard: View {
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.card))
     }
 
+    /// 深色模式使用更亮的黄，浅色模式使用更深的棕黄以满足对比度。
     private var guidanceColor: Color {
         colorScheme == .dark
             ? Color(red: 0.98, green: 0.73, blue: 0.22)
             : Color(red: 0.58, green: 0.39, blue: 0.05)
     }
 
+    /// 占位文案同时区分今天/历史和编辑/只读状态。
     private var placeholder: String {
         if isEditable {
             return isToday ? "输入今天的指引…" : "输入这一天的指引…"
@@ -583,6 +641,7 @@ private struct GuidanceEntryCard: View {
         return isToday ? "今天还没有指引" : "这一天还没有指引"
     }
 
+    /// 明确使用中文公历日期和完整星期，避免系统区域设置导致格式不一致。
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -593,6 +652,12 @@ private struct GuidanceEntryCard: View {
     }()
 }
 
+// MARK: - UIKit 文本视图桥接
+
+/// 把 UIKit `UITextView` 包装成 SwiftUI View。
+///
+/// 使用 UIKit 而不是 SwiftUI `TextEditor`，是为了让只读和编辑状态共享同一套 TextKit
+/// 排版参数。这样切换编辑时每行字数不会跳变，同时能让高度随多行内容自动增长。
 private struct GuidanceStyledTextView: UIViewRepresentable {
     @Binding var text: String
     let isEditable: Bool
@@ -602,26 +667,31 @@ private struct GuidanceStyledTextView: UIViewRepresentable {
         Coordinator(parent: self)
     }
 
+    /// UIKit 视图只创建一次；之后的状态变化都走 `updateUIView`。
     func makeUIView(context: Context) -> UITextView {
         let textView = UITextView()
         textView.delegate = context.coordinator
         textView.backgroundColor = .clear
         textView.isScrollEnabled = false
+        // 外层 ScrollView 负责整页滚动，内层关闭滚动后才能按内容计算完整高度。
         textView.isEditable = isEditable
         textView.isSelectable = true
         textView.textContainerInset = .zero
+        // lineFragmentPadding 默认会偷偷增加左右留白；设为 0 才能保证显示/编辑换行一致。
         textView.textContainer.lineFragmentPadding = 0
         textView.adjustsFontForContentSizeCategory = true
         textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
         return textView
     }
 
+    /// SwiftUI 状态变化时，把文本、样式、可编辑性和光标状态同步到 UITextView。
     func updateUIView(_ textView: UITextView, context: Context) {
         context.coordinator.parent = self
         let attributes = textAttributes
         let selectedRange = textView.selectedRange
 
         if textView.text != text {
+            // 仅当字符串真的变化时替换 attributedText，避免每次刷新都把光标移走。
             textView.attributedText = NSAttributedString(string: text, attributes: attributes)
         } else if !textView.text.isEmpty {
             textView.textStorage.setAttributes(
@@ -634,6 +704,7 @@ private struct GuidanceStyledTextView: UIViewRepresentable {
         textView.isEditable = isEditable
         textView.isSelectable = true
         if isEditable && !context.coordinator.wasEditable {
+            // 刚进入编辑时把光标放到末尾并自动弹出键盘。
             textView.selectedRange = NSRange(location: textView.textStorage.length, length: 0)
             DispatchQueue.main.async { textView.becomeFirstResponder() }
         } else if selectedRange.location <= textView.textStorage.length {
@@ -646,6 +717,9 @@ private struct GuidanceStyledTextView: UIViewRepresentable {
         context.coordinator.wasEditable = isEditable
     }
 
+    /// iOS 16+ 的 UIViewRepresentable 自定义尺寸入口。
+    ///
+    /// 只读时高度刚好包住全文；编辑时至少 180 点，给用户足够的输入区域。
     func sizeThatFits(
         _ proposal: ProposedViewSize,
         uiView: UITextView,
@@ -661,11 +735,13 @@ private struct GuidanceStyledTextView: UIViewRepresentable {
         return CGSize(width: width, height: ceil(max(fittingHeight, minimumHeight)))
     }
 
+    /// 显示与输入共同使用的富文本属性；数据本身仍保存为纯文本。
     private var textAttributes: [NSAttributedString.Key: Any] {
         let baseFont = UIFont.preferredFont(forTextStyle: .title3)
         let italicFont = baseFont.fontDescriptor.withSymbolicTraits(.traitItalic)
             .map { UIFont(descriptor: $0, size: 0) } ?? baseFont
         let paragraph = NSMutableParagraphStyle()
+        // 与原显示样式保持 7 点额外行距。
         paragraph.lineSpacing = 7
         return [
             .font: italicFont,
@@ -674,6 +750,7 @@ private struct GuidanceStyledTextView: UIViewRepresentable {
         ]
     }
 
+    /// UITextViewDelegate 不能直接由值类型 View 持有，Coordinator 充当长期存在的代理对象。
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: GuidanceStyledTextView
         var wasEditable = false
@@ -683,11 +760,15 @@ private struct GuidanceStyledTextView: UIViewRepresentable {
         }
 
         func textViewDidChange(_ textView: UITextView) {
+            // 用户每次输入都回写 SwiftUI Binding，但文件仍要等顶栏“保存”才会修改。
             parent.text = textView.text
         }
     }
 }
 
+// MARK: - 按钮和品牌样式
+
+/// 开始/暂停/继续/结束按钮共用的样式；`isProminent` 决定哪一个是当前主操作。
 private struct SessionActionButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
     let isProminent: Bool
@@ -710,6 +791,7 @@ private struct SessionActionButtonStyle: ButtonStyle {
     }
 }
 
+/// 次要操作按钮样式，例如备注。
 private struct QuietButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) private var isEnabled
 
@@ -723,6 +805,7 @@ private struct QuietButtonStyle: ButtonStyle {
     }
 }
 
+/// 只在本文件内使用的品牌色，避免把纯展示常量混入业务 Store。
 private extension Color {
     static let tomato = Color(red: 0.89, green: 0.18, blue: 0.17)
     static let tomatoDark = Color(red: 0.62, green: 0.08, blue: 0.09)

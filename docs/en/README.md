@@ -45,6 +45,10 @@ Build and run the latest version while exiting an older running instance:
 
 An unfinished timer in the old instance is discarded; saved records are unaffected.
 
+## Reading and Maintaining the Source
+
+If you are new to Swift, AppKit, SwiftUI, or Live Activities, start with the [source reading and maintenance guide](code-reading-guide.md). Every Swift source file and build script also includes beginner-oriented Chinese comments explaining file responsibilities, state transitions, data compatibility, and common maintenance cautions.
+
 ## iOS App and Dynamic Island
 
 The iOS app project is located at:

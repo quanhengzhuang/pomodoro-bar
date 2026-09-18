@@ -45,6 +45,10 @@ dist/PomodoroBar.app
 
 旧实例中尚未结束的计时会被放弃，已保存的记录不受影响。
 
+## 阅读和维护源码
+
+如果你不熟悉 Swift、AppKit、SwiftUI 或实时活动，可以从[源码阅读与维护指南](docs/code-reading-guide.md)开始。所有 Swift 源文件和构建脚本也包含面向初学者的中文注释，说明文件职责、状态流转、数据兼容和常见维护注意点。
+
 ## iOS App 与灵动岛
 
 iOS App 工程位于：

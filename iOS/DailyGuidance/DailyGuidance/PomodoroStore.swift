@@ -1,9 +1,16 @@
+// iOS 番茄钟的核心业务状态与持久化。
+//
+// SwiftUI 页面只发送“开始、暂停、继续、结束”等意图；真正的计时状态机、记录文件、
+// 本地通知、Live Activity 和跨进程共享状态都由这个文件维护。
 import ActivityKit
 import Combine
 import Foundation
 import SwiftUI
 import UserNotifications
 
+/// iOS 支持的四种计时模式。
+///
+/// rawValue 会写入 JSON 和 App Group，共享后不应随意改名；界面文案请修改 `title`。
 enum PomodoroMode: String, Codable, CaseIterable, Identifiable {
     case countUp = "count_up"
     case focus = "focus"
@@ -12,6 +19,7 @@ enum PomodoroMode: String, Codable, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
+    /// 首页模式选择器使用的完整中文名称。
     var title: String {
         switch self {
         case .countUp: return "自由计时"
@@ -21,6 +29,7 @@ enum PomodoroMode: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    /// 锁屏/灵动岛空间有限，使用更短的名称。
     var compactTitle: String {
         switch self {
         case .countUp: return "计时"
@@ -29,6 +38,7 @@ enum PomodoroMode: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    /// 计划时长。自由计时没有终点，因此返回 `nil`。
     var durationSeconds: Int? {
         switch self {
         case .countUp: return nil
@@ -38,6 +48,8 @@ enum PomodoroMode: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    /// 一般情况下完成当前模式后应切换到的下一模式。
+    /// 第四次专注后的长休息由 Store 结合历史记录另行判断。
     var next: PomodoroMode {
         switch self {
         case .focus: return .shortBreak
@@ -45,6 +57,7 @@ enum PomodoroMode: String, Codable, CaseIterable, Identifiable {
         }
     }
 
+    /// SF Symbol 名称，用于首页模式按钮和最近记录图标。
     var symbolName: String {
         switch self {
         case .countUp: return "stopwatch.fill"
@@ -55,6 +68,9 @@ enum PomodoroMode: String, Codable, CaseIterable, Identifiable {
     }
 }
 
+/// 一条已经结束并写入本机 JSON 的计时记录。
+///
+/// 日期使用稳定字符串而不是直接编码 `Date`，使文件可读，也与 Mac 版格式兼容。
 struct PomodoroRecord: Codable, Hashable, Identifiable {
     let startedAt: String
     let endedAt: String
@@ -64,8 +80,10 @@ struct PomodoroRecord: Codable, Hashable, Identifiable {
     let durationMinutes: Int
     let note: String
 
+    /// 旧数据没有独立 UUID；组合稳定字段生成足以去重的身份。
     var id: String { "\(startedAt)|\(endedAt)|\(type)|\(note)" }
 
+    /// 从真实时间和业务字段创建可持久化记录。
     init(startedAt: Date, endedAt: Date, type: String, durationSeconds: Int, note: String) {
         self.startedAt = Self.dateTimeFormatter.string(from: startedAt)
         self.endedAt = Self.dateTimeFormatter.string(from: endedAt)
@@ -76,14 +94,17 @@ struct PomodoroRecord: Codable, Hashable, Identifiable {
         self.note = note
     }
 
+    /// 把文件中的 type 字符串还原为界面模式；未知旧值安全回退为自由计时。
     var mode: PomodoroMode {
         PomodoroMode(rawValue: type) ?? .countUp
     }
 
+    /// 最近记录列表使用的紧凑时间范围，例如 `09:30–09:55`。
     var timeRange: String {
         "\(startedAt.suffix(8).prefix(5))–\(endedAt.suffix(8).prefix(5))"
     }
 
+    /// 仅包含日期的 POSIX 格式化器，避免设备语言改变 JSON 格式。
     static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -92,6 +113,7 @@ struct PomodoroRecord: Codable, Hashable, Identifiable {
         return formatter
     }()
 
+    /// 精确到秒的记录时间格式化器。
     private static let dateTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.calendar = Calendar(identifier: .gregorian)
@@ -101,6 +123,10 @@ struct PomodoroRecord: Codable, Hashable, Identifiable {
     }()
 }
 
+/// 正在进行的会话在主 App 沙盒内的恢复快照。
+///
+/// 它与 `PomodoroSharedSession` 角色不同：前者用于主 App 自身重启恢复；后者用于 App Group
+/// 跨主 App 和 Live Activity Intent 通信。两者保存相同核心时间字段以便相互对账。
 private struct PersistedSession: Codable {
     let id: UUID
     let mode: PomodoroMode
@@ -112,62 +138,98 @@ private struct PersistedSession: Codable {
     let note: String
 }
 
+/// iOS 番茄钟的单一状态源。
+///
+/// `@MainActor` 让 Timer、SwiftUI 和异步 ActivityKit 回调最终都在主线程更新 Published 属性。
 @MainActor
 final class PomodoroStore: ObservableObject {
+    // MARK: - 界面可观察状态
+
+    /// 用户当前选中的模式；会话进行中不能切换。
     @Published private(set) var selectedMode: PomodoroMode = .focus
+    /// 当前时间是否仍在累积。
     @Published private(set) var isRunning = false
+    /// 是否存在一段可暂停/继续/结束的会话。
     @Published private(set) var hasActiveSession = false
+    /// 页面大数字：自由计时为已用秒数，倒计时为剩余秒数。
     @Published private(set) var displaySeconds = 25 * 60
+    /// 当前会话实际运行的累计秒数，不包含暂停时间。
     @Published private(set) var elapsedSeconds = 0
+    /// 环形进度的 0...1 比例；自由计时每 25 分钟循环一次视觉进度。
     @Published private(set) var progress = 0.0
+    /// 已完成记录，内部按时间正序保存。
     @Published private(set) var records: [PomodoroRecord] = []
+    /// 系统设置是否允许 Live Activity。
     @Published private(set) var liveActivityEnabled = ActivityAuthorizationInfo().areActivitiesEnabled
+    /// 当前时段备注。允许页面双向绑定，但持久化仍由 `updateNote` 统一触发。
     @Published var note = ""
+    /// 需要页面弹窗展示的非致命错误。
     @Published var errorMessage: String?
 
+    // MARK: - 当前会话内部状态
+
+    /// 每次开始新会话都会更换，用于关联共享状态、通知和 Live Activity。
     private var sessionID = UUID()
+    /// 整段会话第一次开始时间。
     private var startedAt: Date?
+    /// 倒计时总计划秒数；调整时间后会变化，自由计时为 nil。
     private var plannedDurationSeconds: Int?
+    /// 最近一次暂停前已经运行的秒数。
     private var accumulatedSeconds = 0
+    /// 当前运行片段开始时间；暂停时为 nil。
     private var lastResumedAt: Date?
+    /// 只负责让前台界面每秒刷新，不作为时间真相来源。
     private var ticker: Timer?
+    /// 监听当前进程中 App Intent 发布的共享状态变化。
     private var sharedSessionObserver: AnyCancellable?
+    /// 主 App 当前持有的 ActivityKit 实例。
     private var activity: Activity<PomodoroActivityAttributes>?
+    /// 少于三分钟的手动结束不写记录，避免误触产生噪声。
     private let minimumRecordedSessionSeconds = 3 * 60
+    /// 主 App UserDefaults 中保存会话快照的 key。
     private let sessionStorageKey = "ios.pomodoro.active-session"
 
+    /// 每段会话使用独立通知 ID，避免取消旧提醒时误伤新时段。
     private var completionNotificationID: String {
         "pomodoro-complete-\(sessionID.uuidString)"
     }
 
+    /// iOS 记录存放在 App 自己的 Application Support 沙盒，不直接写 Mac 的 iCloud records.json。
     private var recordsURL: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("PomodoroBar", isDirectory: true)
             .appendingPathComponent("records.json")
     }
 
+    // MARK: - 页面派生数据
+
     var modeOptions: [PomodoroMode] { PomodoroMode.allCases }
 
+    /// 主按钮根据状态在开始、暂停、继续之间切换。
     var primaryActionTitle: String {
         guard hasActiveSession else { return "开始" }
         return isRunning ? "暂停" : "继续"
     }
 
+    /// 今天所有专注记录的总秒数。
     var todayFocusSeconds: Int {
         records
             .filter { $0.date == PomodoroRecord.dateFormatter.string(from: Date()) && $0.type == PomodoroMode.focus.rawValue }
             .reduce(0) { $0 + $1.durationSeconds }
     }
 
+    /// 今天完成的全部模式记录数量。
     var todaySessionCount: Int {
         records.filter { $0.date == PomodoroRecord.dateFormatter.string(from: Date()) }.count
     }
 
+    /// 首页只展示最后五条；完整数据仍保存在 `records`。
     var recentRecords: [PomodoroRecord] {
         Array(records.reversed().prefix(5))
     }
 
     init() {
+        // Intent 更新共享状态后立即对账。weak self 避免订阅闭包与 Store 互相强持有。
         sharedSessionObserver = NotificationCenter.default
             .publisher(for: .pomodoroSharedSessionDidChange)
             .receive(on: RunLoop.main)
@@ -178,6 +240,9 @@ final class PomodoroStore: ObservableObject {
             }
     }
 
+    // MARK: - 生命周期与用户操作
+
+    /// 首次进入 App 时恢复记录、未结束会话和已有 Live Activity。
     func prepare() async {
         loadRecords()
         restoreSession()
@@ -186,12 +251,14 @@ final class PomodoroStore: ObservableObject {
             $0.attributes.sessionID == sessionID
         }
         if hasActiveSession {
+            // 根据墙钟时间重新计算，不能相信上次保存时的界面秒数。
             refresh(at: Date())
             if isRunning { startTicker() }
             await syncLiveActivity()
         }
     }
 
+    /// 只允许在没有活动会话时切换模式。
     func selectMode(_ mode: PomodoroMode) {
         guard !hasActiveSession else { return }
         selectedMode = mode
@@ -200,6 +267,7 @@ final class PomodoroStore: ObservableObject {
         progress = 0
     }
 
+    /// 首页主按钮的统一入口，把当前状态映射到开始、暂停或继续。
     func performPrimaryAction() {
         if !hasActiveSession {
             startNewSession()
@@ -210,6 +278,9 @@ final class PomodoroStore: ObservableObject {
         }
     }
 
+    /// 手动结束当前会话，并在达到门槛时写入记录。
+    ///
+    /// `recordIfEligible` 为将来的“放弃本段”场景预留；正常页面调用保持默认 true。
     func endSession(recordIfEligible: Bool = true) {
         guard hasActiveSession else { return }
         refresh(at: Date())
@@ -217,11 +288,13 @@ final class PomodoroStore: ObservableObject {
             appendRecord(durationSeconds: elapsedSeconds)
         }
         let finalState = activityState()
+        // 先抓取最终 Activity 状态，再 reset；否则重置后的字段会污染锁屏最后一帧。
         cancelCompletionNotification()
         resetSession()
         Task { await endLiveActivity(finalState: finalState) }
     }
 
+    /// 增减倒计时总长度。调整后必须仍有正的剩余时间。
     func adjustCountdown(minutes: Int) -> Bool {
         guard hasActiveSession, selectedMode != .countUp, minutes != 0 else { return false }
         refresh(at: Date())
@@ -235,6 +308,7 @@ final class PomodoroStore: ObservableObject {
         return true
     }
 
+    /// 清理备注首尾空白，并在会话中同步到恢复快照与实时活动。
     func updateNote(_ value: String) {
         note = value.trimmingCharacters(in: .whitespacesAndNewlines)
         if hasActiveSession {
@@ -243,6 +317,9 @@ final class PomodoroStore: ObservableObject {
         }
     }
 
+    /// 响应 App 前后台切换。
+    ///
+    /// 进入后台时停止一秒 ticker 以节省资源；回前台后通过真实时间差一次性追平。
     func scenePhaseChanged(_ phase: ScenePhase) {
         if phase == .active {
             reconcileSharedSession()
@@ -263,6 +340,9 @@ final class PomodoroStore: ObservableObject {
         }
     }
 
+    // MARK: - 计时状态机
+
+    /// 初始化一段全新会话，并同时启动本地恢复、通知和 Live Activity 链路。
     private func startNewSession() {
         let now = Date()
         sessionID = UUID()
@@ -281,6 +361,7 @@ final class PomodoroStore: ObservableObject {
         Task { await syncLiveActivity() }
     }
 
+    /// 冻结当前累计时间并停止前台刷新。
     private func pause() {
         refresh(at: Date())
         accumulatedSeconds = elapsedSeconds
@@ -293,6 +374,7 @@ final class PomodoroStore: ObservableObject {
         Task { await syncLiveActivity() }
     }
 
+    /// 从当前时刻开启一个新的运行片段。
     private func resume() {
         lastResumedAt = Date()
         isRunning = true
@@ -302,6 +384,9 @@ final class PomodoroStore: ObservableObject {
         Task { await syncLiveActivity() }
     }
 
+    /// 创建每秒触发的前台 Timer。
+    ///
+    /// 使用 `.common` RunLoop 模式，用户滚动界面时计时显示也能继续更新。
     private func startTicker() {
         ticker?.invalidate()
         let timer = Timer(timeInterval: 1, repeats: true) { [weak self] _ in
@@ -311,6 +396,7 @@ final class PomodoroStore: ObservableObject {
         ticker = timer
     }
 
+    /// 每秒重新派生界面时间，并在倒计时归零时完成本段。
     private func tick() {
         refresh(at: Date())
         if selectedMode != .countUp, displaySeconds <= 0 {
@@ -318,6 +404,9 @@ final class PomodoroStore: ObservableObject {
         }
     }
 
+    /// 以“累计值 + 当前运行片段时间”计算所有界面字段。
+    ///
+    /// Timer 可能被系统延迟，因此绝不能简单地每次减一；墙钟差值才是时间真相。
     private func refresh(at date: Date) {
         guard hasActiveSession else { return }
         var seconds = accumulatedSeconds
@@ -329,11 +418,13 @@ final class PomodoroStore: ObservableObject {
             displaySeconds = max(0, duration - seconds)
             progress = duration > 0 ? min(1, Double(seconds) / Double(duration)) : 0
         } else {
+            // 自由计时没有终点，环形进度仅作为 25 分钟循环的视觉提示。
             displaySeconds = seconds
             progress = Double(seconds % (25 * 60)) / Double(25 * 60)
         }
     }
 
+    /// 自动完成倒计时、写入完整计划时长并切换下一模式。
     private func completeCountdown() {
         guard hasActiveSession else { return }
         let completedMode = selectedMode
@@ -346,12 +437,16 @@ final class PomodoroStore: ObservableObject {
         Task { await endLiveActivity(finalState: finalState) }
     }
 
+    /// 每完成四次专注安排一次长休息，其余情况使用模式的默认 next。
     private func nextMode(after mode: PomodoroMode) -> PomodoroMode {
         guard mode == .focus else { return mode.next }
         let completedFocusSessions = records.filter { $0.type == PomodoroMode.focus.rawValue }.count
         return completedFocusSessions.isMultiple(of: 4) ? .longBreak : .shortBreak
     }
 
+    /// 清空当前会话内存、恢复快照和可选的 App Group 共享状态。
+    ///
+    /// `clearSharedSession: false` 用于从共享状态对账时，避免刚读出的值被提前删除。
     private func resetSession(clearSharedSession: Bool = true) {
         let endedSessionID = sessionID
         ticker?.invalidate()
@@ -372,6 +467,9 @@ final class PomodoroStore: ObservableObject {
         }
     }
 
+    // MARK: - 完成记录
+
+    /// 创建并去重一条记录，然后原子保存整个数组。
     private func appendRecord(
         durationSeconds: Int,
         startedAt recordStartedAt: Date? = nil,
@@ -393,6 +491,7 @@ final class PomodoroStore: ObservableObject {
         saveRecords()
     }
 
+    /// 从 Application Support 读取记录；解析失败时不覆盖原文件。
     private func loadRecords() {
         guard let data = try? Data(contentsOf: recordsURL) else { return }
         do {
@@ -402,6 +501,7 @@ final class PomodoroStore: ObservableObject {
         }
     }
 
+    /// 以可读、稳定排序的 JSON 原子写入记录。
     private func saveRecords() {
         do {
             let directory = recordsURL.deletingLastPathComponent()
@@ -416,6 +516,9 @@ final class PomodoroStore: ObservableObject {
         }
     }
 
+    // MARK: - 会话恢复与跨进程同步
+
+    /// 同时保存主 App 恢复快照，并可选择镜像到 App Group。
     private func persistSession(mirrorToSharedStorage: Bool = true) {
         guard hasActiveSession, let startedAt else { return }
         let value = PersistedSession(
@@ -436,6 +539,7 @@ final class PomodoroStore: ObservableObject {
         }
     }
 
+    /// 从主 App 自己的 UserDefaults 恢复尚未结束的会话字段。
     private func restoreSession() {
         guard let data = UserDefaults.standard.data(forKey: sessionStorageKey),
               let value = try? JSONDecoder().decode(PersistedSession.self, from: data) else { return }
@@ -450,6 +554,10 @@ final class PomodoroStore: ObservableObject {
         note = value.note
     }
 
+    /// 把 App Group 中可能由锁屏按钮修改的状态合并回主 App。
+    ///
+    /// 这是交互实时活动最关键的对账入口。若共享状态为 ended，会补写记录并结束活动；
+    /// 若仍 active，则恢复暂停/运行状态、提醒与 ticker。
     private func reconcileSharedSession() {
         guard let shared = PomodoroSharedStorage.load() else {
             if hasActiveSession {
@@ -466,6 +574,7 @@ final class PomodoroStore: ObservableObject {
             let elapsed = shared.elapsedSeconds(at: referenceDate)
             let duration = shared.plannedDurationSeconds.map { min(elapsed, $0) } ?? elapsed
             if duration >= minimumRecordedSessionSeconds {
+                // 使用共享快照中的起止时间和备注，避免主 App 被挂起期间的信息丢失。
                 appendRecord(
                     durationSeconds: duration,
                     startedAt: shared.startedAt,
@@ -493,6 +602,7 @@ final class PomodoroStore: ObservableObject {
         Task { await syncLiveActivity() }
     }
 
+    /// 把共享模型字段复制到主 Store。
     private func apply(sharedSession: PomodoroSharedSession) {
         sessionID = sharedSession.id
         selectedMode = PomodoroMode(rawValue: sharedSession.modeRawValue) ?? .countUp
@@ -505,6 +615,7 @@ final class PomodoroStore: ObservableObject {
         note = sharedSession.note
     }
 
+    /// 从主 Store 生成可跨进程编码的 active 快照。
     private func sharedSession(startedAt: Date) -> PomodoroSharedSession {
         PomodoroSharedSession(
             id: sessionID,
@@ -523,15 +634,20 @@ final class PomodoroStore: ObservableObject {
         )
     }
 
+    // MARK: - Live Activity
+
+    /// 把当前计时状态转换为 ActivityKit 可高效渲染的时间锚点。
     private func activityState(at date: Date = Date()) -> PomodoroActivityAttributes.ContentState {
         let timerStart: Date
         let timerEnd: Date?
         let pausedValue: Int
         if isRunning, let resumedAt = lastResumedAt {
+            // 把之前累计秒数折回起点，系统就能从一个 Date 连续计算完整经过时间。
             timerStart = resumedAt.addingTimeInterval(-TimeInterval(accumulatedSeconds))
             timerEnd = plannedDurationSeconds.map { timerStart.addingTimeInterval(TimeInterval($0)) }
             pausedValue = elapsedSeconds
         } else {
+            // 暂停时 `pausedValue` 固定；timerStart/timerEnd 仅用于保持完整状态结构。
             timerStart = date.addingTimeInterval(-TimeInterval(elapsedSeconds))
             timerEnd = plannedDurationSeconds.map { date.addingTimeInterval(TimeInterval(max(0, $0 - elapsedSeconds))) }
             pausedValue = displaySeconds
@@ -546,6 +662,7 @@ final class PomodoroStore: ObservableObject {
         )
     }
 
+    /// 更新已有 Live Activity；若还没有，则为当前 sessionID 创建一条。
     private func syncLiveActivity() async {
         liveActivityEnabled = ActivityAuthorizationInfo().areActivitiesEnabled
         guard liveActivityEnabled, hasActiveSession else { return }
@@ -565,12 +682,18 @@ final class PomodoroStore: ObservableObject {
         }
     }
 
+    /// 结束与当前会话对应的 Activity，并立即从系统界面移除。
     private func endLiveActivity(finalState: PomodoroActivityAttributes.ContentState) async {
         let current = activity ?? Activity<PomodoroActivityAttributes>.activities.first
         await current?.end(using: finalState, dismissalPolicy: .immediate)
         activity = nil
     }
 
+    // MARK: - 本地完成通知
+
+    /// 请求必要权限并按照当前剩余秒数安排一次完成提醒。
+    ///
+    /// 每次暂停、继续或调整时间都会取消旧请求再重建，防止多个提醒重复触发。
     private func authorizeAndScheduleCompletionNotification() async {
         cancelCompletionNotification()
         guard isRunning, selectedMode != .countUp, displaySeconds > 0 else { return }
@@ -578,6 +701,7 @@ final class PomodoroStore: ObservableObject {
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
         if settings.authorizationStatus == .notDetermined {
+            // 只在主 App 中请求权限；Live Activity Intent 不应突然弹出系统授权框。
             _ = try? await center.requestAuthorization(options: [.alert, .sound])
         }
 
@@ -592,6 +716,7 @@ final class PomodoroStore: ObservableObject {
         try? await center.add(request)
     }
 
+    /// 取消当前 sessionID 对应的待发送通知。
     private func cancelCompletionNotification() {
         UNUserNotificationCenter.current().removePendingNotificationRequests(withIdentifiers: [completionNotificationID])
     }
