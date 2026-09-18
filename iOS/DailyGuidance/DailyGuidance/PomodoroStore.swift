@@ -131,6 +131,7 @@ final class PomodoroStore: ObservableObject {
     private var accumulatedSeconds = 0
     private var lastResumedAt: Date?
     private var ticker: Timer?
+    private var sharedSessionObserver: AnyCancellable?
     private var activity: Activity<PomodoroActivityAttributes>?
     private let minimumRecordedSessionSeconds = 3 * 60
     private let sessionStorageKey = "ios.pomodoro.active-session"
@@ -166,10 +167,24 @@ final class PomodoroStore: ObservableObject {
         Array(records.reversed().prefix(5))
     }
 
+    init() {
+        sharedSessionObserver = NotificationCenter.default
+            .publisher(for: .pomodoroSharedSessionDidChange)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                Task { @MainActor in
+                    self?.reconcileSharedSession()
+                }
+            }
+    }
+
     func prepare() async {
         loadRecords()
         restoreSession()
-        activity = Activity<PomodoroActivityAttributes>.activities.first
+        reconcileSharedSession()
+        activity = Activity<PomodoroActivityAttributes>.activities.first {
+            $0.attributes.sessionID == sessionID
+        }
         if hasActiveSession {
             refresh(at: Date())
             if isRunning { startTicker() }
@@ -229,8 +244,9 @@ final class PomodoroStore: ObservableObject {
     }
 
     func scenePhaseChanged(_ phase: ScenePhase) {
-        guard hasActiveSession else { return }
         if phase == .active {
+            reconcileSharedSession()
+            guard hasActiveSession else { return }
             refresh(at: Date())
             if selectedMode != .countUp, displaySeconds <= 0 {
                 completeCountdown()
@@ -238,6 +254,7 @@ final class PomodoroStore: ObservableObject {
                 startTicker()
             }
         } else {
+            guard hasActiveSession else { return }
             refresh(at: Date())
             ticker?.invalidate()
             ticker = nil
@@ -335,7 +352,8 @@ final class PomodoroStore: ObservableObject {
         return completedFocusSessions.isMultiple(of: 4) ? .longBreak : .shortBreak
     }
 
-    private func resetSession() {
+    private func resetSession(clearSharedSession: Bool = true) {
+        let endedSessionID = sessionID
         ticker?.invalidate()
         ticker = nil
         hasActiveSession = false
@@ -349,18 +367,29 @@ final class PomodoroStore: ObservableObject {
         elapsedSeconds = 0
         progress = 0
         UserDefaults.standard.removeObject(forKey: sessionStorageKey)
+        if clearSharedSession {
+            PomodoroSharedStorage.clear(sessionID: endedSessionID)
+        }
     }
 
-    private func appendRecord(durationSeconds: Int) {
-        let end = Date()
-        let start = startedAt ?? end.addingTimeInterval(-TimeInterval(durationSeconds))
-        records.append(PomodoroRecord(
+    private func appendRecord(
+        durationSeconds: Int,
+        startedAt recordStartedAt: Date? = nil,
+        endedAt recordEndedAt: Date = Date(),
+        mode: PomodoroMode? = nil,
+        note recordNote: String? = nil
+    ) {
+        let start = recordStartedAt ?? startedAt
+            ?? recordEndedAt.addingTimeInterval(-TimeInterval(durationSeconds))
+        let record = PomodoroRecord(
             startedAt: start,
-            endedAt: end,
-            type: selectedMode.rawValue,
+            endedAt: recordEndedAt,
+            type: (mode ?? selectedMode).rawValue,
             durationSeconds: max(0, durationSeconds),
-            note: note
-        ))
+            note: recordNote ?? note
+        )
+        guard !records.contains(where: { $0.id == record.id }) else { return }
+        records.append(record)
         saveRecords()
     }
 
@@ -387,7 +416,7 @@ final class PomodoroStore: ObservableObject {
         }
     }
 
-    private func persistSession() {
+    private func persistSession(mirrorToSharedStorage: Bool = true) {
         guard hasActiveSession, let startedAt else { return }
         let value = PersistedSession(
             id: sessionID,
@@ -401,6 +430,9 @@ final class PomodoroStore: ObservableObject {
         )
         if let data = try? JSONEncoder().encode(value) {
             UserDefaults.standard.set(data, forKey: sessionStorageKey)
+        }
+        if mirrorToSharedStorage {
+            PomodoroSharedStorage.save(sharedSession(startedAt: startedAt))
         }
     }
 
@@ -416,6 +448,79 @@ final class PomodoroStore: ObservableObject {
         accumulatedSeconds = value.accumulatedSeconds
         lastResumedAt = value.lastResumedAt
         note = value.note
+    }
+
+    private func reconcileSharedSession() {
+        guard let shared = PomodoroSharedStorage.load() else {
+            if hasActiveSession {
+                persistSession()
+            }
+            return
+        }
+
+        apply(sharedSession: shared)
+        let referenceDate = shared.endedAt ?? Date()
+        refresh(at: referenceDate)
+
+        if shared.status == .ended {
+            let elapsed = shared.elapsedSeconds(at: referenceDate)
+            let duration = shared.plannedDurationSeconds.map { min(elapsed, $0) } ?? elapsed
+            if duration >= minimumRecordedSessionSeconds {
+                appendRecord(
+                    durationSeconds: duration,
+                    startedAt: shared.startedAt,
+                    endedAt: referenceDate,
+                    mode: selectedMode,
+                    note: shared.note
+                )
+            }
+            let finalState = activityState(at: referenceDate)
+            cancelCompletionNotification()
+            resetSession()
+            Task { await endLiveActivity(finalState: finalState) }
+            return
+        }
+
+        persistSession(mirrorToSharedStorage: false)
+        if isRunning {
+            startTicker()
+            Task { await authorizeAndScheduleCompletionNotification() }
+        } else {
+            ticker?.invalidate()
+            ticker = nil
+            cancelCompletionNotification()
+        }
+        Task { await syncLiveActivity() }
+    }
+
+    private func apply(sharedSession: PomodoroSharedSession) {
+        sessionID = sharedSession.id
+        selectedMode = PomodoroMode(rawValue: sharedSession.modeRawValue) ?? .countUp
+        isRunning = sharedSession.isRunning
+        hasActiveSession = true
+        startedAt = sharedSession.startedAt
+        plannedDurationSeconds = sharedSession.plannedDurationSeconds
+        accumulatedSeconds = sharedSession.accumulatedSeconds
+        lastResumedAt = sharedSession.lastResumedAt
+        note = sharedSession.note
+    }
+
+    private func sharedSession(startedAt: Date) -> PomodoroSharedSession {
+        PomodoroSharedSession(
+            id: sessionID,
+            modeRawValue: selectedMode.rawValue,
+            modeTitle: selectedMode.compactTitle,
+            isCountUp: selectedMode == .countUp,
+            startedAt: startedAt,
+            isRunning: isRunning,
+            plannedDurationSeconds: plannedDurationSeconds,
+            accumulatedSeconds: accumulatedSeconds,
+            lastResumedAt: lastResumedAt,
+            note: note,
+            status: .active,
+            endedAt: nil,
+            updatedAt: Date()
+        )
     }
 
     private func activityState(at date: Date = Date()) -> PomodoroActivityAttributes.ContentState {
