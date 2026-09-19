@@ -110,20 +110,18 @@ struct DiceSceneView: UIViewRepresentable {
             isRolling = true
             rollStartedAt = CACurrentMediaTime()
             nextThrowIndex = 0
-            nextThrowAt = 0.12
+            nextThrowAt = 0.05
             dieStates = Array(repeating: DieRollState(), count: dice.count)
 
-            // Keep every die in a real launch position above the rear wall. They enter the
-            // camera one at a time; nothing is teleported into the final layout.
-            for (index, die) in dice.enumerated() {
+            // Keep every die visible at its current resting transform. Each one starts moving
+            // from the tabletop in turn; there is no hidden launch position or reappearance.
+            for die in dice {
                 guard let body = die.physicsBody else { continue }
                 body.type = .kinematic
                 body.clearAllForces()
                 body.velocity = SCNVector3Zero
                 body.angularVelocity = SCNVector4Zero
-                die.position = launchPosition(for: index)
-                die.simdOrientation = randomOrientation()
-                die.opacity = 0
+                die.opacity = 1
                 body.resetTransform()
             }
         }
@@ -135,7 +133,7 @@ struct DiceSceneView: UIViewRepresentable {
             if nextThrowIndex < dice.count, elapsed >= nextThrowAt {
                 activateDie(at: nextThrowIndex)
                 nextThrowIndex += 1
-                nextThrowAt += 0.52
+                nextThrowAt += 0.14
             }
 
             for index in dice.indices where dieStates[index].isActive && !dieStates[index].hasSettled {
@@ -158,6 +156,7 @@ struct DiceSceneView: UIViewRepresentable {
 
         private func configureScene() {
             scene.physicsWorld.gravity = SCNVector3(0, -9.8, 0)
+            scene.physicsWorld.timeStep = 1.0 / 120.0
             scene.background.contents = UIColor.clear
 
             let cameraTarget = SCNNode()
@@ -276,6 +275,20 @@ struct DiceSceneView: UIViewRepresentable {
                 node.physicsBody?.restitution = 0.42
                 scene.rootNode.addChildNode(node)
             }
+
+            // The camera sees the entire tray, and this invisible lid keeps a hard upward
+            // impulse inside that same volume instead of letting a die leave the view.
+            let ceiling = SCNBox(width: 9.9, height: 0.18, length: 6.6, chamferRadius: 0)
+            let ceilingNode = SCNNode(geometry: ceiling)
+            ceilingNode.opacity = 0
+            ceilingNode.position = SCNVector3(0, 3.45, 0)
+            ceilingNode.physicsBody = SCNPhysicsBody(
+                type: .static,
+                shape: SCNPhysicsShape(geometry: ceiling, options: nil)
+            )
+            ceilingNode.physicsBody?.friction = 0.45
+            ceilingNode.physicsBody?.restitution = 0.28
+            scene.rootNode.addChildNode(ceilingNode)
         }
 
         private func makeDie(size: CGFloat) -> SCNNode {
@@ -291,10 +304,10 @@ struct DiceSceneView: UIViewRepresentable {
             let body = SCNPhysicsBody(type: .kinematic, shape: shape)
             body.mass = 0.18
             body.friction = 0.76
-            body.rollingFriction = 0.24
-            body.restitution = 0.38
-            body.damping = 0.18
-            body.angularDamping = 0.22
+            body.rollingFriction = 0.32
+            body.restitution = 0.34
+            body.damping = 0.30
+            body.angularDamping = 0.34
             body.continuousCollisionDetectionThreshold = 0.08
             node.physicsBody = body
             return node
@@ -322,32 +335,34 @@ struct DiceSceneView: UIViewRepresentable {
         private func performReducedMotionRoll() {
             isRolling = true
             let values = dice.map { _ in Int.random(in: 1...6) }
+            animateReducedMotionDie(at: 0, values: values)
+        }
 
-            dice.forEach { $0.opacity = 1 }
+        private func animateReducedMotionDie(at index: Int, values: [Int]) {
+            guard dice.indices.contains(index) else {
+                isRolling = false
+                parent.onRollFinished(values)
+                return
+            }
+
+            let die = dice[index]
+            die.opacity = 1
 
             SCNTransaction.begin()
-            SCNTransaction.animationDuration = 0.16
+            SCNTransaction.animationDuration = 0.14
             SCNTransaction.animationTimingFunction = CAMediaTimingFunction(name: .easeOut)
-            for (index, die) in dice.enumerated() {
-                die.simdOrientation = orientation(showing: values[index], yaw: Float.random(in: 0...(2 * .pi)))
-            }
+            die.simdOrientation = orientation(showing: values[index], yaw: Float.random(in: 0...(2 * .pi)))
             SCNTransaction.completionBlock = { [weak self] in
                 guard let self else { return }
-                self.isRolling = false
                 DispatchQueue.main.async {
-                    self.parent.onRollFinished(values)
+                    self.parent.onDieSettled(index, values[index])
+                }
+
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.10) { [weak self] in
+                    self?.animateReducedMotionDie(at: index + 1, values: values)
                 }
             }
             SCNTransaction.commit()
-        }
-
-        private func launchPosition(for index: Int) -> SCNVector3 {
-            let columns = min(dice.count, 5)
-            let column = index % columns
-            let itemsInRow = index / columns == 0 ? columns : dice.count - columns
-            let x = (CGFloat(column) - CGFloat(itemsInRow - 1) / 2) * dieSize * 1.28
-            let z = index / columns == 0 ? -2.35 : -1.85
-            return SCNVector3(Float(x), 5.15 + Float(index / columns) * 0.28, Float(z))
         }
 
         private func activateDie(at index: Int) {
@@ -358,21 +373,23 @@ struct DiceSceneView: UIViewRepresentable {
             body.type = .dynamic
             body.clearAllForces()
             body.resetTransform()
-            SCNTransaction.begin()
-            SCNTransaction.animationDuration = 0.10
             dice[index].opacity = 1
-            SCNTransaction.commit()
+
+            let position = dice[index].presentation.position
+            let inwardX = max(-1.3, min(1.3, -position.x * 0.34))
+            let inwardZ = max(-1.1, min(1.1, -position.z * 0.42))
+            let energyStep = Float(index) * 0.10
             body.velocity = SCNVector3(
-                Float.random(in: -0.45...0.45),
-                Float.random(in: -0.35...0.15),
-                Float.random(in: 0.9...1.6)
+                inwardX + Float.random(in: -1.25...1.25),
+                Float.random(in: 3.25...4.15) + energyStep,
+                inwardZ + Float.random(in: -1.05...1.05)
             )
             let spinAxis = randomUnitVector()
             body.angularVelocity = SCNVector4(
                 spinAxis.x,
                 spinAxis.y,
                 spinAxis.z,
-                Float.random(in: 8...14)
+                Float.random(in: 7.5...11.5) + energyStep
             )
         }
 

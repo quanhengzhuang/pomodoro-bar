@@ -59,7 +59,7 @@ struct ContentView: View {
                     .monospacedDigit()
                     .foregroundStyle(AppPalette.ivory)
                     .minimumScaleFactor(0.7)
-                Text(isRolling ? "逐个落下" : "总点数")
+                Text(isRolling ? "已静止 \(settledDiceCount) / \(diceCount)" : "总点数")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(AppPalette.mutedText)
             }
@@ -120,38 +120,21 @@ struct ContentView: View {
     }
 
     private var tray: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 32, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [AppPalette.walnutLight, AppPalette.walnut, AppPalette.walnutDark],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-
-            RoundedRectangle(cornerRadius: 25, style: .continuous)
-                .stroke(AppPalette.brass.opacity(0.22), lineWidth: 1)
-                .padding(8)
-
-            DiceSceneView(
-                diceCount: diceCount,
-                rollToken: rollToken,
-                reduceMotion: reduceMotion,
-                accessibilityValue: trayAccessibilityValue
-            ) { index, value in
-                revealDie(at: index, value: value)
-            } onRollFinished: { values in
-                finishRoll(with: values)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
-            .padding(8)
+        DiceSceneView(
+            diceCount: diceCount,
+            rollToken: rollToken,
+            reduceMotion: reduceMotion,
+            accessibilityValue: trayAccessibilityValue
+        ) { index, value in
+            revealDie(at: index, value: value)
+        } onRollFinished: { values in
+            finishRoll(with: values)
         }
-        // A landscape tray keeps the full play surface visible instead of making the table
-        // read as a clipped square window on iPhone and Mac-designed-for-iPhone layouts.
+        // The SceneKit view stays transparent. The modeled felt-and-wood table is the only
+        // visible boundary, so the play surface no longer reads as a window inside a window.
         .frame(maxWidth: .infinity)
         .aspectRatio(1.45, contentMode: .fit)
-        .shadow(color: .black.opacity(0.46), radius: 22, x: 0, y: 14)
+        .clipped()
         .accessibilityElement(children: .contain)
     }
 
@@ -170,7 +153,7 @@ struct ContentView: View {
                 } else {
                     Image(systemName: "die.face.5.fill")
                 }
-                Text(isRolling ? "骰子逐个落下" : "摇骰子")
+                Text(isRolling ? "等待骰子逐个静止" : "摇骰子")
                     .font(.headline.weight(.bold))
             }
             .frame(maxWidth: .infinity)
@@ -220,6 +203,10 @@ struct ContentView: View {
         let revealed = latestValues.compactMap { $0 }
         guard !revealed.isEmpty else { return "—" }
         return String(revealed.reduce(0, +))
+    }
+
+    private var settledDiceCount: Int {
+        latestValues.compactMap { $0 }.count
     }
 
     private var totalAccessibilityLabel: String {
