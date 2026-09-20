@@ -34,7 +34,7 @@ struct ContentView: View {
                     timerFace
                     controls
                     todaySummary
-                    guidanceAndRecentRecords
+                    recentRecords
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
@@ -46,11 +46,17 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        isSelectingGuidance = true
+                        if guidanceStore.hasSelectedFile {
+                            // 每次打开前重新读文件，以看到 Mac/iCloud 的最新修改。
+                            guidanceStore.refresh()
+                            isShowingGuidance = true
+                        } else {
+                            isSelectingGuidance = true
+                        }
                     } label: {
-                        Image(systemName: "doc.badge.gearshape")
+                        Image(systemName: "quote.opening")
                     }
-                    .accessibilityLabel("配置今日指引数据")
+                    .accessibilityLabel("今日指引")
                 }
             }
         }
@@ -256,44 +262,6 @@ struct ContentView: View {
         }
         .padding(.vertical, 16)
         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.card))
-    }
-
-    /// 小型指引入口与最近记录组成首页底部区域。
-    ///
-    /// 按钮视觉保持紧凑，但整个 44 点高的区域都能点击；即使当前没有记录，
-    /// 今日指引入口也不会消失。
-    private var guidanceAndRecentRecords: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Spacer()
-                Button(action: openGuidance) {
-                    Label("今日指引", systemImage: "quote.opening")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(Color.tomato)
-                        .padding(.horizontal, 11)
-                        .padding(.vertical, 7)
-                        .background(Capsule().fill(Color.card))
-                }
-                .buttonStyle(.plain)
-                .frame(minWidth: 44, minHeight: 44)
-                .contentShape(Rectangle())
-                .accessibilityHint("查看与编辑今日指引")
-            }
-
-            recentRecords
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    /// 已配置数据文件时刷新后打开；首次使用时先选择文件。
-    private func openGuidance() {
-        if guidanceStore.hasSelectedFile {
-            // 每次打开前重新读文件，以看到 Mac/iCloud 的最新修改。
-            guidanceStore.refresh()
-            isShowingGuidance = true
-        } else {
-            isSelectingGuidance = true
-        }
     }
 
     /// 最多显示 Store 提供的五条最近记录；无记录时完全隐藏区域。
