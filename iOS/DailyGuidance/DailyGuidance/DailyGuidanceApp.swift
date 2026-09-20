@@ -60,8 +60,8 @@ struct PomodoroBarApp: App {
         .onChange(of: scenePhase) { phase in
             // 计时不能只依赖界面上的一秒 Timer；从后台回来时要根据真实时间重新计算。
             store.scenePhaseChanged(phase)
-            if phase == .active, guidanceStore.hasSelectedFile {
-                // Mac 或其他设备可能已修改 iCloud 文件，回到前台时主动重新读取。
+            if phase == .active {
+                // Mac 或其他设备可能已写入 CloudKit，回到前台时主动合并。
                 guidanceStore.refresh()
             }
         }

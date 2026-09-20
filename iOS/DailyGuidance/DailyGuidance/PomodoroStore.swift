@@ -72,6 +72,8 @@ enum PomodoroMode: String, Codable, CaseIterable, Identifiable {
 ///
 /// 日期使用稳定字符串而不是直接编码 `Date`，使文件可读，也与 Mac 版格式兼容。
 struct PomodoroRecord: Codable, Hashable, Identifiable {
+    /// 新记录使用 UUID；旧 JSON 解码时使用共享的稳定哈希补齐。
+    let recordID: String
     let startedAt: String
     let endedAt: String
     let date: String
@@ -80,11 +82,22 @@ struct PomodoroRecord: Codable, Hashable, Identifiable {
     let durationMinutes: Int
     let note: String
 
-    /// 旧数据没有独立 UUID；组合稳定字段生成足以去重的身份。
-    var id: String { "\(startedAt)|\(endedAt)|\(type)|\(note)" }
+    var id: String { recordID }
+
+    private enum CodingKeys: String, CodingKey {
+        case recordID = "id"
+        case startedAt
+        case endedAt
+        case date
+        case type
+        case durationSeconds
+        case durationMinutes
+        case note
+    }
 
     /// 从真实时间和业务字段创建可持久化记录。
     init(startedAt: Date, endedAt: Date, type: String, durationSeconds: Int, note: String) {
+        recordID = UUID().uuidString.lowercased()
         self.startedAt = Self.dateTimeFormatter.string(from: startedAt)
         self.endedAt = Self.dateTimeFormatter.string(from: endedAt)
         date = Self.dateFormatter.string(from: endedAt)
@@ -92,6 +105,64 @@ struct PomodoroRecord: Codable, Hashable, Identifiable {
         self.durationSeconds = durationSeconds
         durationMinutes = durationSeconds / 60
         self.note = note
+    }
+
+    /// 把 CloudKit 记录还原为本地 JSON 模型。
+    init(cloudValue: CloudPomodoroSession) {
+        recordID = cloudValue.recordID
+        startedAt = cloudValue.startedAt
+        endedAt = cloudValue.endedAt
+        date = cloudValue.date
+        type = cloudValue.type
+        durationSeconds = max(0, cloudValue.durationSeconds)
+        durationMinutes = max(0, cloudValue.durationSeconds) / 60
+        note = cloudValue.note
+    }
+
+    /// 旧 JSON 没有 id 时生成稳定兼容 ID，但不需要改动或删除原文件。
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        startedAt = try container.decode(String.self, forKey: .startedAt)
+        endedAt = try container.decode(String.self, forKey: .endedAt)
+        date = try container.decodeIfPresent(String.self, forKey: .date) ?? String(endedAt.prefix(10))
+        type = try container.decodeIfPresent(String.self, forKey: .type) ?? PomodoroMode.focus.rawValue
+        durationSeconds = try container.decodeIfPresent(Int.self, forKey: .durationSeconds)
+            ?? (try container.decode(Int.self, forKey: .durationMinutes) * 60)
+        durationMinutes = try container.decodeIfPresent(Int.self, forKey: .durationMinutes)
+            ?? durationSeconds / 60
+        note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
+        recordID = try container.decodeIfPresent(String.self, forKey: .recordID)
+            ?? stableLegacyPomodoroRecordID(
+                startedAt: startedAt,
+                endedAt: endedAt,
+                type: type,
+                durationSeconds: durationSeconds,
+                note: note
+            )
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(recordID, forKey: .recordID)
+        try container.encode(startedAt, forKey: .startedAt)
+        try container.encode(endedAt, forKey: .endedAt)
+        try container.encode(date, forKey: .date)
+        try container.encode(type, forKey: .type)
+        try container.encode(durationSeconds, forKey: .durationSeconds)
+        try container.encode(durationMinutes, forKey: .durationMinutes)
+        try container.encode(note, forKey: .note)
+    }
+
+    var cloudValue: CloudPomodoroSession {
+        CloudPomodoroSession(
+            recordID: recordID,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            date: date,
+            type: type,
+            durationSeconds: durationSeconds,
+            note: note
+        )
     }
 
     /// 把文件中的 type 字符串还原为界面模式；未知旧值安全回退为自由计时。
@@ -188,6 +259,11 @@ final class PomodoroStore: ObservableObject {
     private let minimumRecordedSessionSeconds = 3 * 60
     /// 主 App UserDefaults 中保存会话快照的 key。
     private let sessionStorageKey = "ios.pomodoro.active-session"
+    /// CloudKit 仅同步已完成记录，不同步正在运行的会话。
+    private let cloudStore = PomodoroCloudKitStore()
+    private var isSynchronizingCloudRecords = false
+    private var cloudMigrationAllowed = true
+    private let legacyRecordsBackupKey = "ios.cloudkit.records-backup-created"
 
     /// 每段会话使用独立通知 ID，避免取消旧提醒时误伤新时段。
     private var completionNotificationID: String {
@@ -245,6 +321,7 @@ final class PomodoroStore: ObservableObject {
     /// 首次进入 App 时恢复记录、未结束会话和已有 Live Activity。
     func prepare() async {
         loadRecords()
+        cloudMigrationAllowed = backupLegacyRecordsIfNeeded()
         restoreSession()
         reconcileSharedSession()
         activity = Activity<PomodoroActivityAttributes>.activities.first {
@@ -256,6 +333,7 @@ final class PomodoroStore: ObservableObject {
             if isRunning { startTicker() }
             await syncLiveActivity()
         }
+        await synchronizeRecordsWithCloud(reportErrors: false)
     }
 
     /// 只允许在没有活动会话时切换模式。
@@ -323,6 +401,7 @@ final class PomodoroStore: ObservableObject {
     func scenePhaseChanged(_ phase: ScenePhase) {
         if phase == .active {
             reconcileSharedSession()
+            Task { await synchronizeRecordsWithCloud(reportErrors: false) }
             guard hasActiveSession else { return }
             refresh(at: Date())
             if selectedMode != .countUp, displaySeconds <= 0 {
@@ -486,9 +565,17 @@ final class PomodoroStore: ObservableObject {
             durationSeconds: max(0, durationSeconds),
             note: recordNote ?? note
         )
-        guard !records.contains(where: { $0.id == record.id }) else { return }
+        guard !records.contains(where: {
+            $0.recordID == record.recordID
+                || ($0.startedAt == record.startedAt
+                    && $0.endedAt == record.endedAt
+                    && $0.type == record.type
+                    && $0.durationSeconds == record.durationSeconds
+                    && $0.note == record.note)
+        }) else { return }
         records.append(record)
         saveRecords()
+        Task { await synchronizeRecordsWithCloud(reportErrors: true) }
     }
 
     /// 从 Application Support 读取记录；解析失败时不覆盖原文件。
@@ -513,6 +600,65 @@ final class PomodoroStore: ObservableObject {
             try data.write(to: recordsURL, options: .atomic)
         } catch {
             errorMessage = "记录暂时无法保存，请稍后重试。"
+        }
+    }
+
+    // MARK: - CloudKit 同步与旧数据备份
+
+    /// 下载云端记录、与本地 JSON 去重合并，再把完整结果回写两端。
+    private func synchronizeRecordsWithCloud(reportErrors: Bool) async {
+        guard cloudMigrationAllowed, !isSynchronizingCloudRecords else { return }
+        isSynchronizingCloudRecords = true
+        defer { isSynchronizingCloudRecords = false }
+
+        do {
+            let cloudRecords = try await cloudStore.fetchSessions().map(PomodoroRecord.init(cloudValue:))
+            records = mergeRecords(records + cloudRecords)
+            saveRecords()
+            try await cloudStore.saveSessions(records.map(\.cloudValue))
+        } catch {
+            // 本地 JSON 已在上传前保存，断网或 iCloud 未登录不会丢记录。
+            if reportErrors {
+                errorMessage = "iCloud 数据暂时无法同步，本机记录已安全保存。"
+            }
+        }
+    }
+
+    /// 以 CloudKit recordID 去重，并按结束时间排序，保持首页最近记录稳定。
+    private func mergeRecords(_ values: [PomodoroRecord]) -> [PomodoroRecord] {
+        var seen = Set<String>()
+        return values
+            .filter { seen.insert($0.recordID).inserted }
+            .sorted {
+                if $0.endedAt == $1.endedAt { return $0.startedAt < $1.startedAt }
+                return $0.endedAt < $1.endedAt
+            }
+    }
+
+    /// 迁移前完整复制原 records.json；只创建一次，从不删除原文件。
+    private func backupLegacyRecordsIfNeeded() -> Bool {
+        if UserDefaults.standard.bool(forKey: legacyRecordsBackupKey) { return true }
+        guard FileManager.default.fileExists(atPath: recordsURL.path) else {
+            UserDefaults.standard.set(true, forKey: legacyRecordsBackupKey)
+            return true
+        }
+        do {
+            let backupDirectory = recordsURL.deletingLastPathComponent()
+                .appendingPathComponent("Legacy Backups", isDirectory: true)
+            try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
+            let formatter = DateFormatter()
+            formatter.calendar = Calendar(identifier: .gregorian)
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = "yyyyMMdd-HHmmss"
+            let backupURL = backupDirectory.appendingPathComponent(
+                "records-before-cloudkit-\(formatter.string(from: Date())).json"
+            )
+            try FileManager.default.copyItem(at: recordsURL, to: backupURL)
+            UserDefaults.standard.set(true, forKey: legacyRecordsBackupKey)
+            return true
+        } catch {
+            errorMessage = "CloudKit 迁移前无法备份原记录，已停止云端迁移。"
+            return false
         }
     }
 

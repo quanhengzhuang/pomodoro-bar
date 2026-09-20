@@ -46,13 +46,9 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        if guidanceStore.hasSelectedFile {
-                            // 每次打开前重新读文件，以看到 Mac/iCloud 的最新修改。
-                            guidanceStore.refresh()
-                            isShowingGuidance = true
-                        } else {
-                            isSelectingGuidance = true
-                        }
+                        // 先显示本地缓存，Store 再异步从 CloudKit 拉取新数据。
+                        guidanceStore.refresh()
+                        isShowingGuidance = true
                     } label: {
                         Image(systemName: "quote.opening")
                     }
@@ -369,7 +365,7 @@ private struct GuidanceSheet: View {
             Group {
                 switch store.state {
                 case .noFile:
-                    stateView(symbol: "icloud.and.arrow.down", title: "选择今日指引数据", message: "请选择 iCloud Drive/PomodoroBar/daily-guidance.json。")
+                    stateView(symbol: "icloud", title: "正在准备今日指引", message: "请确认已登录 iCloud。")
                 case .loading:
                     ProgressView("正在读取今日指引…")
                 case .content, .empty:
@@ -415,9 +411,7 @@ private struct GuidanceSheet: View {
                             .accessibilityLabel("修改今日指引")
                         }
                         Button(action: selectAnotherFile) { Image(systemName: "doc.badge.gearshape") }
-                        if store.hasSelectedFile {
-                            Button(action: store.refresh) { Image(systemName: "arrow.clockwise") }
-                        }
+                        Button(action: store.refresh) { Image(systemName: "arrow.clockwise") }
                     }
                 }
             }
@@ -442,13 +436,16 @@ private struct GuidanceSheet: View {
         }
     }
 
-    /// 文件未选择、读取失败等状态共用的说明页面。
+    /// 云端读取失败时可直接重试；导入旧 JSON 是独立的迁移入口。
     private func stateView(symbol: String, title: String, message: String) -> some View {
         VStack(spacing: 14) {
             Image(systemName: symbol).font(.system(size: 40, weight: .light)).foregroundStyle(guidanceColor)
             Text(title).font(.headline)
             Text(message).font(.subheadline).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button("选择数据文件", action: selectAnotherFile).buttonStyle(.borderedProminent)
+            HStack(spacing: 10) {
+                Button("重试", action: store.refresh).buttonStyle(.borderedProminent)
+                Button("导入旧 JSON", action: selectAnotherFile).buttonStyle(.bordered)
+            }
         }
         .padding(30)
     }
@@ -464,7 +461,7 @@ private struct GuidanceSheet: View {
     private var canEditGuidance: Bool {
         switch store.state {
         case .content, .empty:
-            return store.hasSelectedFile
+            return true
         case .noFile, .loading, .error:
             return false
         }

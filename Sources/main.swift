@@ -56,6 +56,8 @@ enum PomodoroMode: String {
 /// `startedAt/endedAt/durationSeconds/type/note` 格式。读取旧数据后再次保存会写成新格式，
 /// 但原始本地文件不会在迁移前被删除。
 struct PomodoroRecord: Codable, Hashable {
+    /// 新记录使用 UUID；旧 JSON 解码时按原字段生成跨设备稳定 ID。
+    let recordID: String
     /// `yyyy-MM-dd HH:mm:ss`，便于用户直接阅读和按字符串排序。
     let startedAt: String
     let endedAt: String
@@ -71,6 +73,7 @@ struct PomodoroRecord: Codable, Hashable {
 
     /// 同时列出新旧格式可能出现的 key。
     enum CodingKeys: String, CodingKey {
+        case recordID = "id"
         case date
         case startedAt
         case endedAt
@@ -83,7 +86,16 @@ struct PomodoroRecord: Codable, Hashable {
     }
 
     /// 创建当前格式记录时统一由秒数派生分钟数。
-    init(startedAt: String, endedAt: String, date: String, type: String, durationSeconds: Int, note: String) {
+    init(
+        recordID: String = UUID().uuidString.lowercased(),
+        startedAt: String,
+        endedAt: String,
+        date: String,
+        type: String,
+        durationSeconds: Int,
+        note: String
+    ) {
+        self.recordID = recordID
         self.startedAt = startedAt
         self.endedAt = endedAt
         self.date = date
@@ -117,11 +129,20 @@ struct PomodoroRecord: Codable, Hashable {
         type = try container.decodeIfPresent(String.self, forKey: .type) ?? "focus"
         note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
         date = try container.decodeIfPresent(String.self, forKey: .date) ?? String(endedAt.prefix(10))
+        recordID = try container.decodeIfPresent(String.self, forKey: .recordID)
+            ?? stableLegacyPomodoroRecordID(
+                startedAt: startedAt,
+                endedAt: endedAt,
+                type: type,
+                durationSeconds: durationSeconds,
+                note: note
+            )
     }
 
     /// 始终按当前可读 JSON 格式编码，不再写入历史兼容字段。
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(recordID, forKey: .recordID)
         try container.encode(date, forKey: .date)
         try container.encode(startedAt, forKey: .startedAt)
         try container.encode(endedAt, forKey: .endedAt)
@@ -129,6 +150,31 @@ struct PomodoroRecord: Codable, Hashable {
         try container.encode(durationMinutes, forKey: .durationMinutes)
         try container.encode(type, forKey: .type)
         try container.encode(note, forKey: .note)
+    }
+
+    /// CloudKit 与本地 JSON 之间的无损转换。
+    init(cloudValue: CloudPomodoroSession) {
+        self.init(
+            recordID: cloudValue.recordID,
+            startedAt: cloudValue.startedAt,
+            endedAt: cloudValue.endedAt,
+            date: cloudValue.date,
+            type: cloudValue.type,
+            durationSeconds: cloudValue.durationSeconds,
+            note: cloudValue.note
+        )
+    }
+
+    var cloudValue: CloudPomodoroSession {
+        CloudPomodoroSession(
+            recordID: recordID,
+            startedAt: startedAt,
+            endedAt: endedAt,
+            date: date,
+            type: type,
+            durationSeconds: durationSeconds,
+            note: note
+        )
     }
 
     /// 把机器 type 转换为菜单标题；未知值原样显示，便于发现新类型或损坏数据。
@@ -218,6 +264,12 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private var records: [PomodoroRecord] = []
     /// daily-guidance.json 解码后的“日期 → 纯文本”字典。
     private var dailyGuidanceByDate: [String: String] = [:]
+    /// 指引单日修改时间，用于 CloudKit 多设备冲突选择。
+    private var dailyGuidanceModifiedAtByDate: [String: Date] = [:]
+    private let cloudStore = PomodoroCloudKitStore()
+    private var isSynchronizingCloud = false
+    private var cloudMigrationAllowed = true
+    private var hasShownCloudSyncError = false
     /// iCloud 文件解析失败后暂时标记，写入时回退本地以免覆盖损坏/未下载文件。
     private var unreadableICloudFileNames = Set<String>()
     // 时长配置集中在这里，单位统一为秒或明确带 Minutes 后缀。
@@ -229,6 +281,8 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         .appendingPathComponent(".pomodoro-status-bar", isDirectory: true)
     private let recordsFileName = "records.json"
     private let dailyGuidanceFileName = "daily-guidance.json"
+    private let guidanceMetadataStorageKey = "cloudkit.daily-guidance.modified-at"
+    private let cloudBackupMarkerKey = "cloudkit.legacy-json-backup-created"
     private let iCloudDataDirectoryName = "PomodoroBar"
     // 今日指引显示与编辑共享这些尺寸，保证每行换行位置一致。
     private let dailyGuidanceMenuWidth: CGFloat = 520
@@ -288,13 +342,23 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         terminateOtherInstances()
         configureApplicationIcon()
         configureNotifications()
+        // 必须先复制原 JSON，再让任何兼容迁移或格式升级有机会回写文件。
+        cloudMigrationAllowed = backupLegacyJSONBeforeCloudKitIfNeeded()
         loadRecords()
+        loadDailyGuidanceMetadata()
         loadDailyGuidance()
+        seedMissingGuidanceModificationDates()
         synchronizeDailyGuidanceToICloudIfNeeded()
         remainingSeconds = duration(for: .focus)
         configureStatusItem()
         rebuildMenu()
         updateStatusTitle()
+        if !cloudMigrationAllowed {
+            showCloudMigrationBackupError()
+        }
+        Task { @MainActor [weak self] in
+            await self?.synchronizeCloudData(reportErrors: false)
+        }
     }
 
     /// 结束同 Bundle Identifier 的旧进程，避免开发重启后菜单栏出现多个番茄。
@@ -342,8 +406,12 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     func menuNeedsUpdate(_ menu: NSMenu) {
         refreshRecordsFromDataFiles()
         loadDailyGuidance()
+        seedMissingGuidanceModificationDates()
         synchronizeFallbackDataToICloudIfNeeded()
         rebuildMenu()
+        Task { @MainActor [weak self] in
+            await self?.synchronizeCloudData(reportErrors: false)
+        }
     }
 
     // MARK: - 菜单构建
@@ -816,6 +884,135 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         synchronizeDailyGuidanceToICloudIfNeeded()
     }
 
+    // MARK: - CloudKit 同步、冲突合并与迁移备份
+
+    /// 下载 CloudKit 快照与本地 JSON 合并，然后把同一份完整数据写回两端。
+    @MainActor
+    private func synchronizeCloudData(reportErrors: Bool) async {
+        guard cloudMigrationAllowed, !isSynchronizingCloud else { return }
+        isSynchronizingCloud = true
+        defer { isSynchronizingCloud = false }
+
+        do {
+            async let cloudSessions = cloudStore.fetchSessions()
+            async let cloudGuidance = cloudStore.fetchGuidance()
+            let (fetchedSessions, fetchedGuidance) = try await (cloudSessions, cloudGuidance)
+
+            records = mergeRecordGroups([records, fetchedSessions.map(PomodoroRecord.init(cloudValue:))])
+            for entry in fetchedGuidance {
+                let localModifiedAt = dailyGuidanceModifiedAtByDate[entry.dateKey] ?? .distantPast
+                if entry.modifiedAt > localModifiedAt {
+                    dailyGuidanceByDate[entry.dateKey] = entry.text
+                    dailyGuidanceModifiedAtByDate[entry.dateKey] = entry.modifiedAt
+                }
+            }
+
+            guard saveRecords() != nil,
+                  saveDailyGuidance(dailyGuidanceByDate) != nil else {
+                throw CocoaError(.fileWriteUnknown)
+            }
+            saveDailyGuidanceMetadata()
+
+            async let saveSessions: Void = cloudStore.saveSessions(records.map(\.cloudValue))
+            async let saveGuidance: Void = cloudStore.saveGuidance(cloudGuidanceEntries())
+            _ = try await (saveSessions, saveGuidance)
+            hasShownCloudSyncError = false
+            rebuildMenu()
+        } catch {
+            NSLog("CloudKit synchronization failed: \(error.localizedDescription)")
+            if reportErrors, !hasShownCloudSyncError {
+                hasShownCloudSyncError = true
+                showCloudSyncError()
+            }
+        }
+    }
+
+    private func cloudGuidanceEntries() -> [CloudDailyGuidance] {
+        dailyGuidanceByDate.map { dateKey, text in
+            CloudDailyGuidance(
+                dateKey: dateKey,
+                text: text,
+                modifiedAt: dailyGuidanceModifiedAtByDate[dateKey] ?? .distantPast
+            )
+        }
+    }
+
+    /// 单日时间存入 UserDefaults 副本，文本本身仍保持在可读 JSON 中。
+    private func loadDailyGuidanceMetadata() {
+        guard let stored = UserDefaults.standard.dictionary(forKey: guidanceMetadataStorageKey)
+            as? [String: Double] else {
+            return
+        }
+        dailyGuidanceModifiedAtByDate = stored.mapValues(Date.init(timeIntervalSince1970:))
+    }
+
+    private func saveDailyGuidanceMetadata() {
+        let stored = dailyGuidanceModifiedAtByDate.mapValues(\.timeIntervalSince1970)
+        UserDefaults.standard.set(stored, forKey: guidanceMetadataStorageKey)
+    }
+
+    /// 旧 JSON 只有整份文件时间，首次迁移时用最新副本时间补齐每个日期。
+    private func seedMissingGuidanceModificationDates() {
+        let newestFileDate = readableDataFileURLs(named: dailyGuidanceFileName)
+            .filter { FileManager.default.fileExists(atPath: $0.path) }
+            .map(modificationDate(of:))
+            .max() ?? .distantPast
+        for dateKey in dailyGuidanceByDate.keys where dailyGuidanceModifiedAtByDate[dateKey] == nil {
+            dailyGuidanceModifiedAtByDate[dateKey] = newestFileDate
+        }
+        saveDailyGuidanceMetadata()
+    }
+
+    /// CloudKit 首次运行前备份所有本地/iCloud Drive JSON，任一复制失败都不开始迁移。
+    private func backupLegacyJSONBeforeCloudKitIfNeeded() -> Bool {
+        if UserDefaults.standard.bool(forKey: cloudBackupMarkerKey) { return true }
+
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyyMMdd-HHmmss"
+        let backupDirectory = localDataDirectoryURL
+            .appendingPathComponent("Legacy Backups", isDirectory: true)
+            .appendingPathComponent(formatter.string(from: Date()), isDirectory: true)
+
+        do {
+            try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
+            var copiedPaths = Set<String>()
+            for fileName in [recordsFileName, dailyGuidanceFileName] {
+                for sourceURL in readableDataFileURLs(named: fileName)
+                where FileManager.default.fileExists(atPath: sourceURL.path)
+                    && copiedPaths.insert(sourceURL.standardizedFileURL.path).inserted {
+                    let location = isICloudDataFile(sourceURL) ? "icloud" : "local"
+                    let targetURL = backupDirectory.appendingPathComponent("\(location)-\(fileName)")
+                    try FileManager.default.copyItem(at: sourceURL, to: targetURL)
+                }
+            }
+            UserDefaults.standard.set(true, forKey: cloudBackupMarkerKey)
+            return true
+        } catch {
+            NSLog("Could not back up legacy data before CloudKit migration: \(error.localizedDescription)")
+            return false
+        }
+    }
+
+    private func showCloudSyncError() {
+        let alert = makeAlert()
+        alert.messageText = "iCloud 数据暂时未同步"
+        alert.informativeText = "本机 JSON 已安全保存，网络或 iCloud 恢复后会再次合并。"
+        alert.addButton(withTitle: "好")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
+    private func showCloudMigrationBackupError() {
+        let alert = makeAlert()
+        alert.messageText = "未开始 CloudKit 迁移"
+        alert.informativeText = "原 JSON 文件备份失败。为保护现有数据，已保持本地模式且未上传。"
+        alert.addButton(withTitle: "好")
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
+    }
+
     /// 今天对应的 JSON 日期 key。
     private var todayDateKey: String {
         recordDateFormatter.string(from: Date())
@@ -1067,6 +1264,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             note: sessionNote
         ))
         saveRecords()
+        Task { @MainActor [weak self] in
+            await self?.synchronizeCloudData(reportErrors: true)
+        }
     }
 
     /// 启动时读取本地/iCloud记录，并兼容迁移旧 UserDefaults 数据。
@@ -1083,9 +1283,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             return
         }
 
-        if saveRecords() != nil, legacyRecords != nil {
-            // 只有新 JSON 成功保存后才删除旧 UserDefaults，避免迁移失败造成数据丢失。
-            UserDefaults.standard.removeObject(forKey: recordsStorageKey)
+        // 只把合并结果写入 JSON；旧 UserDefaults 也保留，便于 CloudKit 迁移后回滚。
+        if legacyRecords != nil {
+            _ = saveRecords()
         }
     }
 
@@ -1129,13 +1329,13 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     /// 对多组记录去重并按结束时间、开始时间稳定排序。
     ///
-    /// PomodoroRecord 遵循 Hashable，因此字段完全相同的记录只保留一份。
+    /// 使用跨设备稳定 recordID 去重；旧 JSON 会在解码时补齐兼容 ID。
     private func mergeRecordGroups(_ groups: [[PomodoroRecord]]) -> [PomodoroRecord] {
-        var seenRecords = Set<PomodoroRecord>()
+        var seenRecordIDs = Set<String>()
         var mergedRecords: [PomodoroRecord] = []
 
         for group in groups {
-            for record in group where seenRecords.insert(record).inserted {
+            for record in group where seenRecordIDs.insert(record.recordID).inserted {
                 mergedRecords.append(record)
             }
         }
@@ -1159,6 +1359,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         let renderedRecords = records.map { record in
             """
               {
+                "id" : "\(jsonEscaped(record.recordID))",
                 "date" : "\(jsonEscaped(record.date))",
                 "startedAt" : "\(jsonEscaped(record.startedAt))",
                 "endedAt" : "\(jsonEscaped(record.endedAt))",
@@ -1591,20 +1792,28 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         let guidance = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         // 重新读盘后只覆盖今天，保留刚从其他来源同步来的日期。
         loadDailyGuidance()
+        seedMissingGuidanceModificationDates()
         let previousGuidance = dailyGuidanceByDate
+        let previousModifiedAt = dailyGuidanceModifiedAtByDate[todayDateKey]
         if guidance.isEmpty {
             dailyGuidanceByDate[todayDateKey] = ""
         } else {
             dailyGuidanceByDate[todayDateKey] = guidance
         }
+        dailyGuidanceModifiedAtByDate[todayDateKey] = Date()
 
         guard saveDailyGuidance(dailyGuidanceByDate) != nil else {
             dailyGuidanceByDate = previousGuidance
+            dailyGuidanceModifiedAtByDate[todayDateKey] = previousModifiedAt
             showDailyGuidanceSaveError()
             return
         }
+        saveDailyGuidanceMetadata()
 
         rebuildMenu()
+        Task { @MainActor [weak self] in
+            await self?.synchronizeCloudData(reportErrors: true)
+        }
     }
 
     /// 保存失败时显示不会自动关闭或覆盖数据的明确提示。

@@ -123,15 +123,17 @@ Live Activity 按钮
 }
 ```
 
-iPhone 首次访问时需要用户通过系统文件选择器选择 `daily-guidance.json`。系统返回的 URL 只能临时访问，因此 `GuidanceStore` 把 security-scoped bookmark 保存到 UserDefaults，下次启动再恢复授权。
+iPhone 现在直接从 CloudKit Private Database 读取今日指引，本机 Application Support 中的 `daily-guidance.json` 是离线可读副本。旧版 iCloud Drive JSON 仍可从配置入口导入；系统返回的 URL 只能临时访问，因此 `GuidanceStore` 会保存 security-scoped bookmark，用于导入和继续维护镜像。
 
 保存某一天时，流程是：
 
-1. 重新读取整个 JSON，吸收其他设备刚同步的内容。
-2. 只替换目标日期。
-3. 使用可读、按日期排序的 JSON 编码。
-4. 通过原子写入替换文件。
-5. 重新生成今天状态和近 30 天时间流。
+1. 只更新目标日期，并记录该日期的 `modifiedAt`。
+2. 原子写入本机可读 JSON 和独立的修改时间元数据。
+3. 立即重新生成今天状态和近 30 天时间流。
+4. 异步上传 CloudKit；断网时保留本机内容，之后回到前台再合并。
+5. 多设备修改同一天时选择 `modifiedAt` 较新的文本。
+
+已完成番茄记录也以单条记录同步到 CloudKit，并用稳定 `id` 去重。共用的 Record Type、分页、批量保存和冲突重试在 `iOS/DailyGuidance/Shared/PomodoroCloudKitStore.swift`；正在运行的计时不上传。
 
 编辑和展示都使用 `GuidanceStyledTextView`，所以字号、颜色、行距、内容宽度和自动换行相同。JSON 始终只保存纯文本，不保存字体或颜色。
 

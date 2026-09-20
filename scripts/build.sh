@@ -15,6 +15,8 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 # 把 Swift/Clang 模块缓存放在仓库的 .build 中，避免每次从头编译系统模块。
 MODULE_CACHE="$ROOT_DIR/.build/ModuleCache"
+SHARED_CLOUDKIT_SOURCE="$ROOT_DIR/iOS/DailyGuidance/Shared/PomodoroCloudKitStore.swift"
+ENTITLEMENTS_FILE="$ROOT_DIR/Packaging/PomodoroBar.entitlements"
 
 mkdir -p "$ROOT_DIR/dist" "$MODULE_CACHE"
 
@@ -33,12 +35,40 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 swiftc \
   -module-cache-path "$MODULE_CACHE" \
   -framework AppKit \
+  -framework CloudKit \
+  "$SHARED_CLOUDKIT_SOURCE" \
   "$ROOT_DIR/Sources/main.swift" \
   -o "$MACOS_DIR/$APP_NAME"
 
 # Info.plist 描述应用名称、Bundle Identifier 等元数据；icns 是 Finder 和提醒框使用的图标。
 cp "$ROOT_DIR/Packaging/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$ROOT_DIR/Resources/AppIcon.icns" "$RESOURCES_DIR/AppIcon.icns"
+
+# CloudKit 属于受限权限，必须把 entitlements 写入 App 签名。本地开发可通过
+# POMODORO_CODESIGN_IDENTITY 指定 Apple Development 证书；未指定时仍使用 ad-hoc 签名以便
+# 普通构建，但 ad-hoc 版本不能真正访问 CloudKit。
+SIGNING_IDENTITY="${POMODORO_CODESIGN_IDENTITY:--}"
+PROVISIONING_PROFILE="${POMODORO_PROVISIONING_PROFILE:-}"
+if [[ -n "$PROVISIONING_PROFILE" ]]; then
+  if [[ ! -f "$PROVISIONING_PROFILE" ]]; then
+    echo "Provisioning profile not found: $PROVISIONING_PROFILE" >&2
+    exit 1
+  fi
+  cp "$PROVISIONING_PROFILE" "$CONTENTS_DIR/embedded.provisionprofile"
+else
+  rm -f "$CONTENTS_DIR/embedded.provisionprofile"
+fi
+codesign \
+  --force \
+  --deep \
+  --timestamp=none \
+  --entitlements "$ENTITLEMENTS_FILE" \
+  --sign "$SIGNING_IDENTITY" \
+  "$APP_DIR"
+
+if [[ "$SIGNING_IDENTITY" == "-" ]]; then
+  echo "Warning: ad-hoc signed build cannot access CloudKit; set POMODORO_CODESIGN_IDENTITY and POMODORO_PROVISIONING_PROFILE for a development build."
+fi
 
 # 更新目录时间戳，帮助 Finder/LaunchServices 感知这是一次新构建。
 touch "$APP_DIR" "$CONTENTS_DIR"
