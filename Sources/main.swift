@@ -264,8 +264,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private var records: [PomodoroRecord] = []
     /// daily-guidance.json 解码后的“日期 → 纯文本”字典。
     private var dailyGuidanceByDate: [String: String] = [:]
-    /// 指引单日修改时间，用于 CloudKit 多设备冲突选择。
-    private var dailyGuidanceModifiedAtByDate: [String: Date] = [:]
     private let cloudStore = PomodoroCloudKitStore()
     private var isSynchronizingCloud = false
     private var cloudMigrationAllowed = true
@@ -281,7 +279,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         .appendingPathComponent(".pomodoro-status-bar", isDirectory: true)
     private let recordsFileName = "records.json"
     private let dailyGuidanceFileName = "daily-guidance.json"
-    private let guidanceMetadataStorageKey = "cloudkit.daily-guidance.modified-at"
     private let cloudBackupMarkerKey = "cloudkit.legacy-json-backup-created"
     private let iCloudDataDirectoryName = "PomodoroBar"
     // 今日指引显示与编辑共享这些尺寸，保证每行换行位置一致。
@@ -345,9 +342,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         // 必须先复制原 JSON，再让任何兼容迁移或格式升级有机会回写文件。
         cloudMigrationAllowed = backupLegacyJSONBeforeCloudKitIfNeeded()
         loadRecords()
-        loadDailyGuidanceMetadata()
         loadDailyGuidance()
-        seedMissingGuidanceModificationDates()
         synchronizeDailyGuidanceToICloudIfNeeded()
         remainingSeconds = duration(for: .focus)
         configureStatusItem()
@@ -406,7 +401,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     func menuNeedsUpdate(_ menu: NSMenu) {
         refreshRecordsFromDataFiles()
         loadDailyGuidance()
-        seedMissingGuidanceModificationDates()
         synchronizeFallbackDataToICloudIfNeeded()
         rebuildMenu()
         Task { @MainActor [weak self] in
@@ -876,7 +870,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         _ = saveDailyGuidance(dailyGuidanceByDate)
     }
 
-    /// 菜单打开时分别检查 records 和 guidance 是否需要回迁 iCloud。
+    /// 菜单打开时检查记录是否需要回迁 iCloud。
     private func synchronizeFallbackDataToICloudIfNeeded() {
         if shouldSynchronizeFallbackFileToICloud(named: recordsFileName) {
             _ = saveRecords()
@@ -886,7 +880,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     // MARK: - CloudKit 同步、冲突合并与迁移备份
 
-    /// 下载 CloudKit 快照与本地 JSON 合并，然后把同一份完整数据写回两端。
+    /// 下载 CloudKit 计时记录并与本地 JSON 合并，然后把记录写回两端。
     @MainActor
     private func synchronizeCloudData(reportErrors: Bool) async {
         guard cloudMigrationAllowed, !isSynchronizingCloud else { return }
@@ -894,28 +888,15 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         defer { isSynchronizingCloud = false }
 
         do {
-            async let cloudSessions = cloudStore.fetchSessions()
-            async let cloudGuidance = cloudStore.fetchGuidance()
-            let (fetchedSessions, fetchedGuidance) = try await (cloudSessions, cloudGuidance)
+            let fetchedSessions = try await cloudStore.fetchSessions()
 
             records = mergeRecordGroups([records, fetchedSessions.map(PomodoroRecord.init(cloudValue:))])
-            for entry in fetchedGuidance {
-                let localModifiedAt = dailyGuidanceModifiedAtByDate[entry.dateKey] ?? .distantPast
-                if entry.modifiedAt > localModifiedAt {
-                    dailyGuidanceByDate[entry.dateKey] = entry.text
-                    dailyGuidanceModifiedAtByDate[entry.dateKey] = entry.modifiedAt
-                }
-            }
 
-            guard saveRecords() != nil,
-                  saveDailyGuidance(dailyGuidanceByDate) != nil else {
+            guard saveRecords() != nil else {
                 throw CocoaError(.fileWriteUnknown)
             }
-            saveDailyGuidanceMetadata()
 
-            async let saveSessions: Void = cloudStore.saveSessions(records.map(\.cloudValue))
-            async let saveGuidance: Void = cloudStore.saveGuidance(cloudGuidanceEntries())
-            _ = try await (saveSessions, saveGuidance)
+            try await cloudStore.saveSessions(records.map(\.cloudValue))
             hasShownCloudSyncError = false
             rebuildMenu()
         } catch {
@@ -927,43 +908,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
-    private func cloudGuidanceEntries() -> [CloudDailyGuidance] {
-        dailyGuidanceByDate.map { dateKey, text in
-            CloudDailyGuidance(
-                dateKey: dateKey,
-                text: text,
-                modifiedAt: dailyGuidanceModifiedAtByDate[dateKey] ?? .distantPast
-            )
-        }
-    }
-
-    /// 单日时间存入 UserDefaults 副本，文本本身仍保持在可读 JSON 中。
-    private func loadDailyGuidanceMetadata() {
-        guard let stored = UserDefaults.standard.dictionary(forKey: guidanceMetadataStorageKey)
-            as? [String: Double] else {
-            return
-        }
-        dailyGuidanceModifiedAtByDate = stored.mapValues(Date.init(timeIntervalSince1970:))
-    }
-
-    private func saveDailyGuidanceMetadata() {
-        let stored = dailyGuidanceModifiedAtByDate.mapValues(\.timeIntervalSince1970)
-        UserDefaults.standard.set(stored, forKey: guidanceMetadataStorageKey)
-    }
-
-    /// 旧 JSON 只有整份文件时间，首次迁移时用最新副本时间补齐每个日期。
-    private func seedMissingGuidanceModificationDates() {
-        let newestFileDate = readableDataFileURLs(named: dailyGuidanceFileName)
-            .filter { FileManager.default.fileExists(atPath: $0.path) }
-            .map(modificationDate(of:))
-            .max() ?? .distantPast
-        for dateKey in dailyGuidanceByDate.keys where dailyGuidanceModifiedAtByDate[dateKey] == nil {
-            dailyGuidanceModifiedAtByDate[dateKey] = newestFileDate
-        }
-        saveDailyGuidanceMetadata()
-    }
-
-    /// CloudKit 首次运行前备份所有本地/iCloud Drive JSON，任一复制失败都不开始迁移。
+    /// CloudKit 首次运行前备份本地/iCloud Drive 记录 JSON，任一复制失败都不开始迁移。
     private func backupLegacyJSONBeforeCloudKitIfNeeded() -> Bool {
         if UserDefaults.standard.bool(forKey: cloudBackupMarkerKey) { return true }
 
@@ -978,7 +923,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         do {
             try FileManager.default.createDirectory(at: backupDirectory, withIntermediateDirectories: true)
             var copiedPaths = Set<String>()
-            for fileName in [recordsFileName, dailyGuidanceFileName] {
+            for fileName in [recordsFileName] {
                 for sourceURL in readableDataFileURLs(named: fileName)
                 where FileManager.default.fileExists(atPath: sourceURL.path)
                     && copiedPaths.insert(sourceURL.standardizedFileURL.path).inserted {
@@ -1792,28 +1737,18 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         let guidance = textView.string.trimmingCharacters(in: .whitespacesAndNewlines)
         // 重新读盘后只覆盖今天，保留刚从其他来源同步来的日期。
         loadDailyGuidance()
-        seedMissingGuidanceModificationDates()
         let previousGuidance = dailyGuidanceByDate
-        let previousModifiedAt = dailyGuidanceModifiedAtByDate[todayDateKey]
         if guidance.isEmpty {
             dailyGuidanceByDate[todayDateKey] = ""
         } else {
             dailyGuidanceByDate[todayDateKey] = guidance
         }
-        dailyGuidanceModifiedAtByDate[todayDateKey] = Date()
-
         guard saveDailyGuidance(dailyGuidanceByDate) != nil else {
             dailyGuidanceByDate = previousGuidance
-            dailyGuidanceModifiedAtByDate[todayDateKey] = previousModifiedAt
             showDailyGuidanceSaveError()
             return
         }
-        saveDailyGuidanceMetadata()
-
         rebuildMenu()
-        Task { @MainActor [weak self] in
-            await self?.synchronizeCloudData(reportErrors: true)
-        }
     }
 
     /// 保存失败时显示不会自动关闭或覆盖数据的明确提示。

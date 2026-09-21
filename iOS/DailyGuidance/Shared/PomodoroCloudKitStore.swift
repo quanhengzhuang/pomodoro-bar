@@ -19,23 +19,9 @@ struct CloudPomodoroSession: Hashable, Sendable {
     let note: String
 }
 
-/// 云端的一天指引。`modifiedAt` 用来选择多设备中最新的文本。
-struct CloudDailyGuidance: Hashable, Sendable {
-    let dateKey: String
-    let text: String
-    let modifiedAt: Date
-}
-
-/// 一次云端读取得到的完整数据快照。
-struct PomodoroCloudSnapshot: Sendable {
-    let sessions: [CloudPomodoroSession]
-    let guidance: [CloudDailyGuidance]
-}
-
-/// CloudKit 本身没有 SQL 表；这两个 Record Type 会在开发环境首次写入时生成。
+/// CloudKit 本身没有 SQL 表；该 Record Type 会在开发环境首次写入时生成。
 private enum CloudSchema {
     static let sessionType = "PomodoroSession"
-    static let guidanceType = "DailyGuidance"
     static let schemaVersion: Int64 = 1
 
     enum SessionField {
@@ -48,12 +34,6 @@ private enum CloudSchema {
         static let schemaVersion = "schemaVersion"
     }
 
-    enum GuidanceField {
-        static let dateKey = "dateKey"
-        static let text = "text"
-        static let modifiedAt = "modifiedAt"
-        static let schemaVersion = "schemaVersion"
-    }
 }
 
 /// 查询、分页和批量保存的最小封装。
@@ -67,13 +47,6 @@ final class PomodoroCloudKitStore: @unchecked Sendable {
         database = container.privateCloudDatabase
     }
 
-    /// 并行读取完成记录和每日指引。新容器尚未建立 Record Type 时按空数据处理。
-    func fetchSnapshot() async throws -> PomodoroCloudSnapshot {
-        async let sessions = fetchSessions()
-        async let guidance = fetchGuidance()
-        return try await PomodoroCloudSnapshot(sessions: sessions, guidance: guidance)
-    }
-
     /// 写入不可变的已完成记录。相同 recordID 已存在时直接跳过，不会重复追加。
     func saveSessions(_ sessions: [CloudPomodoroSession]) async throws {
         for batch in sessions.chunked(maxCount: 200) {
@@ -85,31 +58,6 @@ final class PomodoroCloudKitStore: @unchecked Sendable {
                     // 已完成记录不可变；同 ID 已存在即表示这条记录已经上传成功。
                     guard existing[recordID] == nil else { return nil }
                     let record = CKRecord(recordType: CloudSchema.sessionType, recordID: recordID)
-                    apply(value, to: record)
-                    return record
-                }
-                try await modify(records)
-            }
-        }
-    }
-
-    /// 按日期覆盖同一天的指引；冲突选择由调用方在写入前根据 modifiedAt 完成。
-    func saveGuidance(_ entries: [CloudDailyGuidance]) async throws {
-        for batch in entries.chunked(maxCount: 200) {
-            try await retryingRecordConflicts {
-                let recordIDs = batch.map { CKRecord.ID(recordName: $0.dateKey) }
-                let existing = try await fetchExistingRecords(recordIDs)
-                let records = batch.compactMap { value -> CKRecord? in
-                    let recordID = CKRecord.ID(recordName: value.dateKey)
-                    let record = existing[recordID]
-                        ?? CKRecord(recordType: CloudSchema.guidanceType, recordID: recordID)
-                    let serverModifiedAt = record[CloudSchema.GuidanceField.modifiedAt] as? Date
-                        ?? record.modificationDate
-                        ?? .distantPast
-                    // 旧设备的延迟上传不能覆盖另一台设备更新的内容。
-                    guard existing[recordID] == nil || value.modifiedAt > serverModifiedAt else {
-                        return nil
-                    }
                     apply(value, to: record)
                     return record
                 }
@@ -137,23 +85,6 @@ final class PomodoroCloudKitStore: @unchecked Sendable {
                     durationSeconds: duration.intValue,
                     note: record[CloudSchema.SessionField.note] as? String ?? ""
                 )
-            }
-        } catch where isMissingDevelopmentSchema(error) {
-            return []
-        }
-    }
-
-    func fetchGuidance() async throws -> [CloudDailyGuidance] {
-        do {
-            return try await fetchAll(recordType: CloudSchema.guidanceType).compactMap { record in
-                guard let dateKey = record[CloudSchema.GuidanceField.dateKey] as? String,
-                      let text = record[CloudSchema.GuidanceField.text] as? String else {
-                    return nil
-                }
-                let modifiedAt = record[CloudSchema.GuidanceField.modifiedAt] as? Date
-                    ?? record.modificationDate
-                    ?? .distantPast
-                return CloudDailyGuidance(dateKey: dateKey, text: text, modifiedAt: modifiedAt)
             }
         } catch where isMissingDevelopmentSchema(error) {
             return []
@@ -199,13 +130,6 @@ final class PomodoroCloudKitStore: @unchecked Sendable {
         record[CloudSchema.SessionField.durationSeconds] = NSNumber(value: value.durationSeconds)
         record[CloudSchema.SessionField.note] = value.note as CKRecordValue
         record[CloudSchema.SessionField.schemaVersion] = NSNumber(value: CloudSchema.schemaVersion)
-    }
-
-    private func apply(_ value: CloudDailyGuidance, to record: CKRecord) {
-        record[CloudSchema.GuidanceField.dateKey] = value.dateKey as CKRecordValue
-        record[CloudSchema.GuidanceField.text] = value.text as CKRecordValue
-        record[CloudSchema.GuidanceField.modifiedAt] = value.modifiedAt as CKRecordValue
-        record[CloudSchema.GuidanceField.schemaVersion] = NSNumber(value: CloudSchema.schemaVersion)
     }
 
     /// 批量取回现有 recordChangeTag，避免用一个新建 CKRecord 覆盖同 ID 记录时产生冲突。

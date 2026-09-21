@@ -1,14 +1,13 @@
 // iOS“今日指引”的数据层。
 //
-// CloudKit Private Database 是设备间的主同步通道；Application Support 中的
-// daily-guidance.json 仍以可读 JSON 形式保留为离线缓存和备份。用户曾经选择的
+// Application Support 中的 daily-guidance.json 是每日指引的唯一数据源；用户曾经选择的
 // iCloud Drive JSON 也不会被删除，可继续作为可见导出副本。
 import Combine
 import Foundation
 
 /// 今日指引页面的顶层加载状态。
 enum GuidanceViewState: Equatable {
-    /// 保留旧状态以兼容界面分支；CloudKit 版本正常不再要求先选文件。
+    /// 保留旧状态以兼容界面分支。
     case noFile
     case loading
     case content(String)
@@ -29,7 +28,7 @@ private struct GuidanceMetadata: Codable {
     var modifiedAtByDate: [String: Date]
 }
 
-/// 管理 CloudKit 指引、本地 JSON 备份和历史页面状态。
+/// 管理每日指引 JSON、本地备份和历史页面状态。
 @MainActor
 final class GuidanceStore: ObservableObject {
     @Published private(set) var state: GuidanceViewState = .loading
@@ -38,14 +37,10 @@ final class GuidanceStore: ObservableObject {
     @Published private(set) var historyEntries: [GuidanceHistoryEntry] = []
     @Published private(set) var saveErrorMessage: String?
 
-    private let cloudStore = PomodoroCloudKitStore()
     private let bookmarkStorageKey = "daily-guidance-file-bookmark"
-    private let legacyBackupKey = "ios.cloudkit.guidance-backup-created"
     private var selectedFileURL: URL?
     private var guidanceByDate: [String: String] = [:]
     private var modifiedAtByDate: [String: Date] = [:]
-    private var isSynchronizingCloud = false
-    private var cloudMigrationAllowed = true
 
     private var dataDirectoryURL: URL {
         FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -76,27 +71,21 @@ final class GuidanceStore: ObservableObject {
     init() {
         restoreSelectedFile()
         loadLocalCache()
-        if guidanceByDate.isEmpty {
-            let importedLegacyFile = importSelectedLegacyFile(reportErrors: false)
-            if importedLegacyFile, !guidanceByDate.isEmpty {
-                do {
-                    try saveLocalFiles()
-                } catch {
-                    cloudMigrationAllowed = false
-                    saveErrorMessage = "无法保存旧指引的本机副本，已停止 CloudKit 迁移。"
-                }
+        if guidanceByDate.isEmpty,
+           importSelectedLegacyFile(reportErrors: false),
+           !guidanceByDate.isEmpty {
+            do {
+                try saveLocalFiles()
+            } catch {
+                saveErrorMessage = "无法保存旧指引的本机副本。"
             }
         }
-        if cloudMigrationAllowed {
-            cloudMigrationAllowed = backupLegacyDataIfNeeded()
-        }
         apply(guidanceByDate)
-        Task { await synchronizeWithCloud(reportErrors: false) }
     }
 
     // MARK: - 旧 JSON 导入与本地刷新
 
-    /// 选择旧 daily-guidance.json 时会立即备份、导入并合并到 CloudKit。
+    /// 选择 daily-guidance.json 时会立即备份并导入本地 JSON。
     func selectFile(_ url: URL) {
         do {
             let bookmark = try withSecurityScopedAccess(to: url) {
@@ -116,22 +105,20 @@ final class GuidanceStore: ObservableObject {
             guard importSelectedLegacyFile(reportErrors: true) else { return }
             try saveLocalFiles()
             apply(guidanceByDate)
-            Task { await synchronizeWithCloud(reportErrors: true) }
         } catch {
             state = .error("无法保存文件访问权限：\(error.localizedDescription)")
         }
     }
 
-    /// 先重读本地缓存，立即展示；随后异步从 CloudKit 合并新数据。
+    /// 先重读本地 JSON，立即展示。
     func refresh() {
         loadLocalCache()
         apply(guidanceByDate)
-        Task { await synchronizeWithCloud(reportErrors: false) }
     }
 
     // MARK: - 保存
 
-    /// 本地先原子落盘，再异步上传 CloudKit；断网时用户刚输入的文本不会丢失。
+    /// 本地先原子落盘，用户刚输入的文本不会丢失。
     @discardableResult
     func saveGuidance(_ guidance: String, forDateKey dateKey: String) -> Bool {
         guard let parsedDate = dateKeyFormatter.date(from: dateKey),
@@ -150,12 +137,6 @@ final class GuidanceStore: ObservableObject {
             mirrorToSelectedFileIfPossible()
             saveErrorMessage = nil
             apply(guidanceByDate)
-            let entry = CloudDailyGuidance(
-                dateKey: dateKey,
-                text: guidanceByDate[dateKey] ?? "",
-                modifiedAt: modifiedAtByDate[dateKey] ?? Date()
-            )
-            Task { await upload(entry, reportErrors: true) }
             return true
         } catch {
             guidanceByDate[dateKey] = previousText
@@ -169,64 +150,11 @@ final class GuidanceStore: ObservableObject {
         saveErrorMessage = nil
     }
 
-    /// 只忘记旧文件的导出授权；CloudKit 与 App 内本地备份均保留。
+    /// 只忘记旧文件的导出授权；App 内本地 JSON 仍保留。
     func forgetSelectedFile() {
         selectedFileURL = nil
         selectedFileName = nil
         UserDefaults.standard.removeObject(forKey: bookmarkStorageKey)
-    }
-
-    // MARK: - CloudKit 合并
-
-    private func synchronizeWithCloud(reportErrors: Bool) async {
-        guard cloudMigrationAllowed, !isSynchronizingCloud else { return }
-        isSynchronizingCloud = true
-        defer { isSynchronizingCloud = false }
-
-        do {
-            let cloudEntries = try await cloudStore.fetchGuidance()
-            for entry in cloudEntries {
-                let localDate = modifiedAtByDate[entry.dateKey] ?? .distantPast
-                if entry.modifiedAt > localDate {
-                    guidanceByDate[entry.dateKey] = entry.text
-                    modifiedAtByDate[entry.dateKey] = entry.modifiedAt
-                }
-            }
-
-            try saveLocalFiles()
-            mirrorToSelectedFileIfPossible()
-            try await cloudStore.saveGuidance(cloudGuidanceEntries())
-            saveErrorMessage = nil
-            apply(guidanceByDate)
-        } catch {
-            // 有本地内容时继续展示，不用临时网络错误遮住整个页面。
-            if reportErrors {
-                saveErrorMessage = "iCloud 数据暂时无法同步，本机 JSON 备份已保留。"
-            } else if guidanceByDate.isEmpty {
-                state = .error("无法读取 iCloud 数据，请确认已登录 iCloud 并稍后重试。")
-            }
-        }
-    }
-
-    private func upload(_ entry: CloudDailyGuidance, reportErrors: Bool) async {
-        do {
-            try await cloudStore.saveGuidance([entry])
-            saveErrorMessage = nil
-        } catch {
-            if reportErrors {
-                saveErrorMessage = "指引已保存在本机，但 iCloud 暂时未同步。"
-            }
-        }
-    }
-
-    private func cloudGuidanceEntries() -> [CloudDailyGuidance] {
-        guidanceByDate.map { dateKey, text in
-            CloudDailyGuidance(
-                dateKey: dateKey,
-                text: text,
-                modifiedAt: modifiedAtByDate[dateKey] ?? .distantPast
-            )
-        }
     }
 
     // MARK: - JSON 缓存、元数据与备份
@@ -297,27 +225,8 @@ final class GuidanceStore: ObservableObject {
                 try data.write(to: selectedFileURL, options: .atomic)
             }
         } catch {
-            // 选定文件是额外副本，不能因它暂时未下载就否定本地和 CloudKit 保存。
+            // 选定文件是额外副本，不能因它暂时未下载就否定本机 JSON 保存。
         }
-    }
-
-    /// 首次 CloudKit 迁移前复制 App 缓存和用户所选原文件。
-    private func backupLegacyDataIfNeeded() -> Bool {
-        if UserDefaults.standard.bool(forKey: legacyBackupKey) { return true }
-        var allSucceeded = true
-        if FileManager.default.fileExists(atPath: cacheURL.path) {
-            allSucceeded = backupFile(cacheURL, label: "cached-daily-guidance") && allSucceeded
-        }
-        // security-scoped URL 在授权作用域外的 fileExists 结果不可靠，直接在 backupFile 内访问。
-        if let selectedFileURL {
-            allSucceeded = backupFile(selectedFileURL, label: "selected-daily-guidance") && allSucceeded
-        }
-        if allSucceeded {
-            UserDefaults.standard.set(true, forKey: legacyBackupKey)
-        } else {
-            saveErrorMessage = "无法备份原指引文件，已停止 CloudKit 迁移。"
-        }
-        return allSucceeded
     }
 
     private func backupFile(_ sourceURL: URL, label: String) -> Bool {
@@ -374,7 +283,7 @@ final class GuidanceStore: ObservableObject {
                 UserDefaults.standard.set(renewedBookmark, forKey: bookmarkStorageKey)
             }
         } catch {
-            // 失效书签只影响额外 JSON 副本，不清空 CloudKit/本地缓存。
+            // 失效书签只影响额外 JSON 副本，不清空本地缓存。
             selectedFileURL = nil
             selectedFileName = nil
         }

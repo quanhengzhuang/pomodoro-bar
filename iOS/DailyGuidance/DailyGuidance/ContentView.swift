@@ -46,7 +46,7 @@ struct ContentView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
-                        // 先显示本地缓存，Store 再异步从 CloudKit 拉取新数据。
+                        // 直接显示本地 JSON。
                         guidanceStore.refresh()
                         isShowingGuidance = true
                     } label: {
