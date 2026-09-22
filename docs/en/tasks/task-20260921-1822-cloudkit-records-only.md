@@ -25,3 +25,5 @@ Approximately 40–70 lines.
 ## Result
 
 Completed. CloudKit now reads and writes only `PomodoroSession`; Daily Guidance is stored only through `daily-guidance.json` and its iCloud Drive/local fallback copies. `./scripts/build.sh` passed; the iOS project could not be verified with `xcodebuild` because the environment has no full Xcode installation.
+
+Follow-up fix: ad-hoc builds no longer carry restricted CloudKit entitlements, so macOS can launch locally built apps.

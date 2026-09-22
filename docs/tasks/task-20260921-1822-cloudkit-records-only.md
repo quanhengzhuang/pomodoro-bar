@@ -25,3 +25,5 @@
 ## 结果
 
 已完成。CloudKit 现在只读写 `PomodoroSession`；每日指引仅通过 `daily-guidance.json` 及其 iCloud Drive/本地回退副本保存。`./scripts/build.sh` 构建通过；iOS 工程因当前环境未安装完整 Xcode，无法运行 `xcodebuild` 验证。
+
+补充修复：ad-hoc 构建不再携带 CloudKit 受限 entitlements，避免 macOS 拒绝启动本地构建的 App。

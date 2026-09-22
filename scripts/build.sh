@@ -58,13 +58,19 @@ if [[ -n "$PROVISIONING_PROFILE" ]]; then
 else
   rm -f "$CONTENTS_DIR/embedded.provisionprofile"
 fi
-codesign \
-  --force \
-  --deep \
-  --timestamp=none \
-  --entitlements "$ENTITLEMENTS_FILE" \
-  --sign "$SIGNING_IDENTITY" \
+CODESIGN_ARGS=(
+  --force
+  --deep
+  --timestamp=none
+  --sign "$SIGNING_IDENTITY"
   "$APP_DIR"
+)
+# CloudKit/iCloud entitlements 是受限权限，ad-hoc 签名虽然可以把它们写进包，
+# 但 macOS 会拒绝启动该 App。只有 Apple Development/Distribution 签名能够携带它们。
+if [[ "$SIGNING_IDENTITY" != "-" ]]; then
+  CODESIGN_ARGS=(--entitlements "$ENTITLEMENTS_FILE" "${CODESIGN_ARGS[@]}")
+fi
+codesign "${CODESIGN_ARGS[@]}"
 
 if [[ "$SIGNING_IDENTITY" == "-" ]]; then
   echo "Warning: ad-hoc signed build cannot access CloudKit; set POMODORO_CODESIGN_IDENTITY and POMODORO_PROVISIONING_PROFILE for a development build."
