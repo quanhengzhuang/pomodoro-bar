@@ -147,10 +147,10 @@ private struct LiveActivityControls: View {
     }
 }
 
-/// Live Activity 专用的胶囊按钮样式。
+/// Live Activity 专用的半透明胶囊按钮样式。
 @available(iOS 17.0, *)
 private struct LiveActivityActionButtonStyle: ButtonStyle {
-    /// `true` 时使用番茄红背景，当前仅用于“结束”。
+    /// `true` 时在系统材质上叠加半透明番茄红，当前仅用于“结束”。
     var isDestructive = false
 
     func makeBody(configuration: Configuration) -> some View {
@@ -160,13 +160,23 @@ private struct LiveActivityActionButtonStyle: ButtonStyle {
             .padding(.vertical, 9)
             .padding(.horizontal, 8)
             .foregroundStyle(.white)
-            .background(
-                Capsule().fill(
-                    isDestructive
-                        ? Color.tomato.opacity(configuration.isPressed ? 0.72 : 1)
-                        : Color.white.opacity(configuration.isPressed ? 0.12 : 0.18)
-                )
-            )
+            .background {
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    // 实时活动本身始终使用深色背景；深色材质保持白字对比度。
+                    .environment(\.colorScheme, .dark)
+                    .overlay {
+                        Capsule().fill(
+                            isDestructive
+                                ? Color.tomato.opacity(configuration.isPressed ? 0.42 : 0.62)
+                                : Color.white.opacity(configuration.isPressed ? 0.14 : 0.04)
+                        )
+                    }
+                    .overlay {
+                        Capsule().strokeBorder(Color.white.opacity(isDestructive ? 0.24 : 0.16), lineWidth: 1)
+                    }
+            }
+            .scaleEffect(configuration.isPressed ? 0.98 : 1)
     }
 }
 
