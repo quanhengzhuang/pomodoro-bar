@@ -597,6 +597,7 @@ private struct GuidanceEntryCard: View {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Text(Self.dateFormatter.string(from: date))
                     .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
                 Spacer()
                 if isToday {
                     Text("今天")
