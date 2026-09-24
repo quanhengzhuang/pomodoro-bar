@@ -288,6 +288,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         terminateOtherInstances()
         configureApplicationIcon()
         configureNotifications()
+        configureEditMenu()
         loadRecords()
         loadDailyGuidance()
         synchronizeDailyGuidanceToICloudIfNeeded()
@@ -325,6 +326,28 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     /// 让旧版 NSUserNotification 在 App 前台也能交给本控制器决定展示。
     private func configureNotifications() {
         NSUserNotificationCenter.default.delegate = self
+    }
+
+    /// 菜单栏 App 没有系统自动生成的“编辑”菜单；命令键需要由主菜单分发给当前文本输入框。
+    private func configureEditMenu() {
+        let mainMenu = NSMenu()
+        let appItem = NSMenuItem()
+        appItem.submenu = NSMenu(title: "Pomodoro")
+        mainMenu.addItem(appItem)
+
+        let editItem = NSMenuItem()
+        let editMenu = NSMenu(title: "编辑")
+        for (title, action, key) in [
+            ("剪切", #selector(NSText.cut(_:)), "x"),
+            ("复制", #selector(NSText.copy(_:)), "c"),
+            ("粘贴", #selector(NSText.paste(_:)), "v"),
+            ("全选", #selector(NSText.selectAll(_:)), "a")
+        ] {
+            editMenu.addItem(withTitle: title, action: action, keyEquivalent: key)
+        }
+        editItem.submenu = editMenu
+        mainMenu.addItem(editItem)
+        NSApp.mainMenu = mainMenu
     }
 
     /// 配置状态栏按钮、菜单代理和空格快捷键所需的菜单关系。
