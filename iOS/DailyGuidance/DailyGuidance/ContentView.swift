@@ -246,7 +246,7 @@ struct ContentView: View {
     /// 今日指引状态、专注时长和完成时段摘要。
     private var todaySummary: some View {
         HStack(spacing: 0) {
-            summaryCell(value: guidanceStatus, label: "今日指引", action: openGuidance)
+            summaryCell(value: "今日指引", label: guidanceStatus, action: openGuidance)
             Divider().frame(height: 38)
             summaryCell(value: formattedDuration(store.todayFocusSeconds), label: "今日专注")
             Divider().frame(height: 38)
