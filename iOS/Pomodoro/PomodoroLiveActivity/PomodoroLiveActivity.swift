@@ -213,7 +213,7 @@ private struct TimerText: View {
 }
 
 /// 用纯 SwiftUI 图形绘制的小番茄，避免 Widget 扩展依赖位图资源。
-private struct TomatoMark: View {
+struct TomatoMark: View {
     let size: CGFloat
 
     var body: some View {

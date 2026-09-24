@@ -3,24 +3,17 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-/// 只打开 App，不擅自开始或改变当前计时。
-@available(iOS 18.0, *)
-struct OpenPomodoroAppIntent: AppIntent {
-    static var title: LocalizedStringResource = "打开 Pomodoro"
-    static var openAppWhenRun = true
-
-    func perform() async throws -> some IntentResult {
-        .result()
-    }
-}
-
-/// 小尺寸锁屏控制只显示图标；采用系统符号以适配锁屏的明暗和着色。
+/// 锁屏控制直接复用实时活动中的番茄标记，保持两处造型一致。
 @available(iOS 18.0, *)
 struct PomodoroLockScreenControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "local.codex.PomodoroBar.open-app") {
             ControlWidgetButton(action: OpenPomodoroAppIntent()) {
-                Label("打开 Pomodoro", systemImage: "timer")
+                Label {
+                    Text("打开 Pomodoro")
+                } icon: {
+                    TomatoMark(size: 22)
+                }
             }
         }
         .displayName("打开 Pomodoro")
