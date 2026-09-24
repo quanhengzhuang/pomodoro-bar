@@ -218,11 +218,11 @@ struct TomatoMark: View {
 
     var body: some View {
         ZStack {
-            // 红色圆形是果实，叶子使用 SF Symbol，弧线提供高光。
+            // 红色圆形是果实；叶子也用几何路径绘制，避免锁屏快捷控制只提取出一个 SF Symbol。
             Circle().fill(Color.tomato)
-            Image(systemName: "leaf.fill")
-                .font(.system(size: size * 0.38, weight: .bold))
+            TomatoLeaf()
                 .foregroundStyle(Color.leaf)
+                .frame(width: size * 0.44, height: size * 0.27)
                 .offset(x: size * 0.12, y: -size * 0.29)
             Circle()
                 .trim(from: 0.04, to: 0.83)
@@ -232,6 +232,42 @@ struct TomatoMark: View {
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
+    }
+}
+
+/// 番茄顶部的叶子。使用闭合几何路径，确保实时活动和锁屏控制渲染出完整图标。
+private struct TomatoLeaf: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let left = rect.minX
+        let right = rect.maxX
+        let top = rect.minY
+        let bottom = rect.maxY
+        let middle = rect.midX
+
+        path.move(to: CGPoint(x: middle, y: bottom))
+        path.addCurve(
+            to: CGPoint(x: left, y: top + rect.height * 0.34),
+            control1: CGPoint(x: left + rect.width * 0.03, y: bottom - rect.height * 0.03),
+            control2: CGPoint(x: left + rect.width * 0.01, y: top + rect.height * 0.03)
+        )
+        path.addCurve(
+            to: CGPoint(x: middle, y: top + rect.height * 0.18),
+            control1: CGPoint(x: left + rect.width * 0.40, y: top + rect.height * 0.11),
+            control2: CGPoint(x: middle - rect.width * 0.10, y: top + rect.height * 0.16)
+        )
+        path.addCurve(
+            to: CGPoint(x: right, y: top),
+            control1: CGPoint(x: middle + rect.width * 0.12, y: top + rect.height * 0.05),
+            control2: CGPoint(x: right - rect.width * 0.04, y: top + rect.height * 0.01)
+        )
+        path.addCurve(
+            to: CGPoint(x: middle, y: bottom),
+            control1: CGPoint(x: right - rect.width * 0.02, y: bottom - rect.height * 0.02),
+            control2: CGPoint(x: middle + rect.width * 0.12, y: bottom - rect.height * 0.01)
+        )
+        path.closeSubpath()
+        return path
     }
 }
 
