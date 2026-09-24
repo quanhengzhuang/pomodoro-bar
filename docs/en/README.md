@@ -1,18 +1,18 @@
 [中文](../../README.md) | [English](README.md)
 
-<img src="../assets/icon.png" alt="Pomodoro Bar icon" width="148">
+<img src="../assets/icon.png" alt="Pomodoro icon" width="148">
 
-# Pomodoro Bar · Menu Bar Pomodoro Timer
+# Pomodoro · Menu Bar Pomodoro Timer
 
 A lightweight macOS menu bar Pomodoro timer.
 
 ## Download
 
-[Download the latest version](https://github.com/quanhengzhuang/pomodoro-bar/releases/latest/download/PomodoroBar.zip), unzip it, and open `PomodoroBar.app`.
+[Download the latest version](https://github.com/quanhengzhuang/pomodoro-bar/releases/latest), unzip it, and open `Pomodoro.app`. Older releases may still contain `PomodoroBar.app`.
 
 ## Preview
 
-<img src="../assets/screenshot-menu.png" alt="Pomodoro Bar menu preview" width="35%">
+<img src="../assets/screenshot-menu.png" alt="Pomodoro menu preview" width="35%">
 
 ## Features
 
@@ -34,7 +34,7 @@ A lightweight macOS menu bar Pomodoro timer.
 The built application is written to:
 
 ```text
-dist/PomodoroBar.app
+dist/Pomodoro.app
 ```
 
 Build and run the latest version while exiting an older running instance:

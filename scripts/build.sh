@@ -7,7 +7,7 @@ set -euo pipefail
 
 # 无论从哪个工作目录调用脚本，都先定位到仓库根目录。
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-APP_NAME="PomodoroBar"
+APP_NAME="Pomodoro"
 # macOS 应用包本质上是一个有固定目录结构的文件夹。
 APP_DIR="$ROOT_DIR/dist/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"

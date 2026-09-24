@@ -1,4 +1,4 @@
-// Pomodoro Bar 的 macOS 菜单栏应用全部源码。
+// Pomodoro 的 macOS 菜单栏应用全部源码。
 //
 // Mac 版刻意保持为一个 AppKit 单文件程序：脚本用 swiftc 直接编译，不依赖 Xcode 工程。
 // `PomodoroController` 同时承担应用生命周期、菜单构建、计时状态机、记录/指引持久化等职责。

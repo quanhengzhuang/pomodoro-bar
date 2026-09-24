@@ -1,18 +1,18 @@
 [中文](README.md) | [English](docs/en/README.md)
 
-<img src="docs/assets/icon.png" alt="Pomodoro Bar icon" width="148">
+<img src="docs/assets/icon.png" alt="Pomodoro 图标" width="148">
 
-# Pomodoro Bar · 菜单栏番茄钟
+# Pomodoro · 菜单栏番茄钟
 
 一个轻量的 macOS 菜单栏番茄钟。
 
 ## 下载
 
-[下载最新版本](https://github.com/quanhengzhuang/pomodoro-bar/releases/latest/download/PomodoroBar.zip)，解压后打开 `PomodoroBar.app` 即可使用。
+[下载最新版本](https://github.com/quanhengzhuang/pomodoro-bar/releases/latest)，解压后打开 `Pomodoro.app` 即可使用。旧版本的应用包仍可能名为 `PomodoroBar.app`。
 
 ## 预览
 
-<img src="docs/assets/screenshot-menu.png" alt="Pomodoro Bar 菜单预览" width="35%">
+<img src="docs/assets/screenshot-menu.png" alt="Pomodoro 菜单预览" width="35%">
 
 ## 功能
 
@@ -34,7 +34,7 @@
 构建产物会输出到：
 
 ```text
-dist/PomodoroBar.app
+dist/Pomodoro.app
 ```
 
 构建并运行最新版本，同时退出已运行的旧实例：
