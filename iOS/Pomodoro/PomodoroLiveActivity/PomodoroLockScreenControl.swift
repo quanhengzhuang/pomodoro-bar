@@ -3,17 +3,13 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-/// 锁屏控制直接复用实时活动中的番茄标记，保持两处造型一致。
+/// 使用静态资源显示番茄标记；锁屏控制不支持把任意 SwiftUI 绘图当作图标。
 @available(iOS 18.0, *)
 struct PomodoroLockScreenControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "local.codex.PomodoroBar.open-app") {
             ControlWidgetButton(action: OpenPomodoroAppIntent()) {
-                Label {
-                    Text("打开 Pomodoro")
-                } icon: {
-                    TomatoMark(size: 22)
-                }
+                Label("打开 Pomodoro", image: "TomatoControlIcon")
             }
         }
         .displayName("打开 Pomodoro")
