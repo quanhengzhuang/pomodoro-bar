@@ -238,7 +238,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private let shortBreakDurationSeconds = 5 * 60
     private let longBreakDurationSeconds = 15 * 60
     private let minimumRecordedSessionSeconds = 3 * 60
-    private let collapsedRecordsLimit = 10
+    /// 历史菜单只展示今天之前的 30 个自然日，JSON 中仍保存全部日期。
     private let historicalDateLimit = 30
     private let dailyGuidanceHistoryDayLimit = 30
 
@@ -863,37 +863,26 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             emptyItem.isEnabled = false
             menu.addItem(emptyItem)
         } else {
-            let reversedRecords = Array(todayRecords.reversed())
-            // 主菜单只放最近几条，避免菜单过长；全部记录仍可进入子菜单查看。
-            let recentRecords = Array(reversedRecords.prefix(collapsedRecordsLimit))
-
-            for record in recentRecords {
+            for record in todayRecords.reversed() {
                 addRecordMenuItem(record, to: menu)
             }
         }
 
-        let todayRecordsItem = NSMenuItem(title: "今日全部记录（共 \(todayRecords.count) 条）", action: nil, keyEquivalent: "")
-        let todayRecordsMenu = NSMenu()
-        if todayRecords.isEmpty {
-            let emptyItem = NSMenuItem(title: "今日暂无记录", action: nil, keyEquivalent: "")
-            emptyItem.isEnabled = false
-            todayRecordsMenu.addItem(emptyItem)
-        } else {
-            for record in todayRecords.reversed() {
-                addRecordMenuItem(record, to: todayRecordsMenu)
-            }
-        }
-        todayRecordsItem.submenu = todayRecordsMenu
-        menu.addItem(todayRecordsItem)
-
-        let historicalRecords = records.filter { $0.date != today }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let startOfToday = calendar.startOfDay(for: Date())
+        let earliestHistoryDate = calendar.date(
+            byAdding: .day,
+            value: -historicalDateLimit,
+            to: startOfToday
+        ) ?? startOfToday
+        let earliestHistoryKey = recordDateFormatter.string(from: earliestHistoryDate)
+        let historicalRecords = records.filter { $0.date >= earliestHistoryKey && $0.date < today }
         // 先按日期分组，再对日期倒序，形成“日期 → 当天记录”的两级菜单。
         let historicalRecordsByDate = Dictionary(grouping: historicalRecords, by: \PomodoroRecord.date)
         let historicalDates = historicalRecordsByDate.keys.sorted(by: >)
-        let visibleHistoricalDates = historicalDates.prefix(historicalDateLimit)
-        let olderDateCount = historicalDates.count - visibleHistoricalDates.count
         let historyItem = NSMenuItem(
-            title: "历史记录（共 \(historicalDates.count) 天 / \(historicalRecords.count) 条）",
+            title: "历史专注记录（近 \(historicalDateLimit) 天 / \(historicalRecords.count) 条）",
             action: nil,
             keyEquivalent: ""
         )
@@ -903,7 +892,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             emptyItem.isEnabled = false
             historyMenu.addItem(emptyItem)
         } else {
-            for date in visibleHistoricalDates {
+            for date in historicalDates {
                 guard let dateRecords = historicalRecordsByDate[date] else {
                     continue
                 }
@@ -922,27 +911,15 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
                 dateItem.submenu = dateMenu
                 historyMenu.addItem(dateItem)
             }
-
-            if olderDateCount > 0 {
-                // 超过 30 天的数据没有删除，只是不继续铺开菜单；用户可打开 JSON 查看。
-                historyMenu.addItem(.separator())
-                let olderRecordsItem = NSMenuItem(
-                    title: "更早记录（共 \(olderDateCount) 天）...",
-                    action: #selector(openRecordsFile),
-                    keyEquivalent: ""
-                )
-                olderRecordsItem.target = self
-                historyMenu.addItem(olderRecordsItem)
-            }
         }
+        historyMenu.addItem(.separator())
+        let openRecordsItem = NSMenuItem(title: "打开记录文件...", action: #selector(openRecordsFile), keyEquivalent: "")
+        openRecordsItem.target = self
+        historyMenu.addItem(openRecordsItem)
         historyItem.submenu = historyMenu
         menu.addItem(historyItem)
 
         addDailyGuidanceHistoryMenuItem()
-
-        let openRecordsItem = NSMenuItem(title: "打开记录文件...", action: #selector(openRecordsFile), keyEquivalent: "")
-        openRecordsItem.target = self
-        menu.addItem(openRecordsItem)
     }
 
     /// 添加最近 30 个自然日内非空的今日指引历史子菜单。
@@ -1000,6 +977,11 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
                 historyMenu.addItem(dateItem)
             }
         }
+
+        historyMenu.addItem(.separator())
+        let openGuidanceItem = NSMenuItem(title: "打开指引文件...", action: #selector(openDailyGuidanceFile), keyEquivalent: "")
+        openGuidanceItem.target = self
+        historyMenu.addItem(openGuidanceItem)
 
         historyItem.submenu = historyMenu
         menu.addItem(historyItem)
@@ -1659,6 +1641,27 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             let alert = makeAlert()
             alert.messageText = "无法打开记录文件"
             alert.informativeText = recordsFileURL.path
+            alert.addButton(withTitle: "好")
+            NSApp.activate(ignoringOtherApps: true)
+            alert.runModal()
+        }
+    }
+
+    /// 重新合并本地和 iCloud 指引，再打开包含所有日期的 JSON 文件。
+    @objc private func openDailyGuidanceFile() {
+        loadDailyGuidance()
+        let existingFileURL = readableDataFileURLs(named: dailyGuidanceFileName)
+            .reversed()
+            .first { FileManager.default.fileExists(atPath: $0.path) }
+        guard let guidanceFileURL = saveDailyGuidance(dailyGuidanceByDate) ?? existingFileURL else {
+            showDailyGuidanceSaveError()
+            return
+        }
+
+        if !NSWorkspace.shared.open(guidanceFileURL) {
+            let alert = makeAlert()
+            alert.messageText = "无法打开指引文件"
+            alert.informativeText = guidanceFileURL.path
             alert.addButton(withTitle: "好")
             NSApp.activate(ignoringOtherApps: true)
             alert.runModal()
