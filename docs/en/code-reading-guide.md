@@ -123,17 +123,15 @@ The file format is:
 }
 ```
 
-The iPhone now reads Daily Guidance directly from the CloudKit private database, while `daily-guidance.json` under Application Support remains a readable offline copy. A legacy iCloud Drive JSON file can still be imported through the configuration entry. Because the system URL is only temporarily accessible, `GuidanceStore` retains a security-scoped bookmark for import and continued mirroring.
+On first access, the iPhone user selects `daily-guidance.json` through the system file picker. The returned URL is only temporarily accessible, so `GuidanceStore` saves a security-scoped bookmark and resolves it on later launches.
 
 Saving one day performs these steps:
 
-1. Update only the target date and record that date's `modifiedAt`.
-2. Atomically write the readable local JSON and separate modification metadata.
-3. Immediately rebuild today's state and the 30-day timeline.
-4. Upload asynchronously to CloudKit; when offline, retain the local value and merge again on foreground activation.
-5. When multiple devices edit the same date, keep the text with the newer `modifiedAt`.
-
-Completed Pomodoro sessions also sync as individual CloudKit records and deduplicate by stable `id`. Shared record types, pagination, batch saves, and conflict retries live in `iOS/DailyGuidance/Shared/PomodoroCloudKitStore.swift`; active timers are never uploaded.
+1. Read the full JSON again to absorb recent changes from other devices.
+2. Replace only the target date.
+3. Encode readable JSON with sorted keys.
+4. Atomically replace the file.
+5. Rebuild today's state and the 30-day timeline.
 
 Editing and display both use `GuidanceStyledTextView`, so font, color, line spacing, content width, and wrapping are identical. The JSON remains plain text and never stores formatting.
 
