@@ -54,12 +54,14 @@ If you are new to Swift, AppKit, SwiftUI, or Live Activities, start with the [so
 The iOS app project is located at:
 
 ```text
-iOS/DailyGuidance/Pomodoro.xcodeproj
+iOS/Pomodoro/Pomodoro.xcodeproj
 ```
 
 Open the project in the full Xcode application, select the `PomodoroBar` target, choose your Apple Developer Team under Signing & Capabilities, and run it in a simulator or on an iPhone. The app requires iOS 16.1 or later.
 
 The iOS app supports a count-up timer, 25-minute focus, 5/15-minute breaks, pause, resume, duration adjustments, notes, and recent records. Starting a timer creates a Live Activity that shows elapsed or remaining time on the Lock Screen and in the Dynamic Island on supported iPhones; End becomes the highlighted red action during an active session. On iOS 17 and later, the Lock Screen and expanded Dynamic Island can pause/resume, add five minutes to a countdown, or end the session directly (count-up sessions omit the extension action). iOS 16.1–16.x keeps the read-only presentation. Allow notifications and make sure Live Activities are enabled under Settings > Pomodoro Bar.
+
+On iOS 18 or later, you can also add the “Open Pomodoro” Lock Screen control: long-press the Lock Screen, choose Customize, tap a bottom control slot, then find and add Pomodoro in the control picker. Tapping it only opens the app; it does not start a timer. This control is independent of the running timer's Live Activity.
 
 The quote button in the top-right corner opens Daily Guidance with Chinese dates such as “2026年9月17日 星期四”. You can edit and save today’s entry or any non-empty historical entry from the most recent 30 calendar days; edit mode shows only the selected date’s card for a focused workspace. Editing and display states share the same warm-amber italics, font size, line spacing, padding, and wrapping width. On first use, select `iCloud Drive/PomodoroBar/daily-guidance.json` in the system file picker; saving updates only the selected date and preserves all others. iOS timer records stay in the app's own sandbox and never overwrite or delete Mac data.
 

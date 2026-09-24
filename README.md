@@ -54,12 +54,14 @@ dist/Pomodoro.app
 iOS App 工程位于：
 
 ```text
-iOS/DailyGuidance/Pomodoro.xcodeproj
+iOS/Pomodoro/Pomodoro.xcodeproj
 ```
 
 使用完整 Xcode 打开工程，选择 `PomodoroBar` target，在 Signing & Capabilities 中选择自己的 Apple Developer Team 后即可在模拟器或 iPhone 上运行。App 最低支持 iOS 16.1。
 
 iOS 版支持自由计时、25 分钟专注、5/15 分钟休息，以及暂停、继续、调整时长、备注和最近记录。开始计时后会创建实时活动，在锁定屏幕和支持的 iPhone 灵动岛显示剩余或已用时间；活动中“结束”为红色主操作。iOS 17 及以上可在锁定屏幕或展开的灵动岛直接暂停/继续、为倒计时增加 5 分钟或结束时段（自由计时不显示延长操作），iOS 16.1–16.x 保持只读显示。请允许通知，并确认系统“设置 > Pomodoro Bar > 实时活动”已开启。
+
+iOS 18 及以上还可以在锁屏底部添加“打开 Pomodoro”快捷控制：长按锁屏并选择“自定”，点击底部快捷控制位置，在控制选择器中找到 Pomodoro 并添加。点击它只会打开 App，不会自动开始计时；与计时中的实时活动彼此独立。
 
 右上角的引号按钮打开“今日指引”：页面以「2026年9月17日 星期四」格式显示日期，可修改并保存当天或最近 30 个自然日内内容非空的历史指引；进入编辑状态后只显示当前日期的编辑卡片。编辑和展示使用相同的暖黄色斜体、字号、行距、边距与换行宽度。首次使用时，在系统文件选择器中进入 `iCloud Drive/PomodoroBar/` 并选择 `daily-guidance.json`；保存只更新所选日期并保留其他日期。iOS 计时记录保存在 App 自己的沙盒中，不覆盖或删除 Mac 端数据。
 

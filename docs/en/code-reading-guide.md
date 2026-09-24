@@ -7,8 +7,8 @@ This guide is for maintainers who are new to Swift, macOS AppKit, iOS SwiftUI, a
 The repository contains three runtime units:
 
 1. **Mac menu bar app**: `Sources/main.swift`
-2. **iPhone main app**: `iOS/DailyGuidance/DailyGuidance/`
-3. **Lock Screen Live Activity extension**: `iOS/DailyGuidance/PomodoroLiveActivity/`
+2. **iPhone main app**: `iOS/Pomodoro/Pomodoro/`
+3. **Lock Screen Live Activity extension**: `iOS/Pomodoro/PomodoroLiveActivity/`
 
 The Mac and iPhone apps are separate programs. Both can use Daily Guidance, but timer records are currently separate: Mac records prefer iCloud, while iPhone timer records stay in the app sandbox.
 
@@ -20,10 +20,10 @@ The iPhone app and Live Activity extension are also separate processes. They exc
 
 Read these files in order:
 
-1. `iOS/DailyGuidance/DailyGuidance/PomodoroActivityAttributes.swift`
-2. `iOS/DailyGuidance/Shared/PomodoroSharedSession.swift`
-3. `iOS/DailyGuidance/DailyGuidance/GuidanceStore.swift`
-4. `iOS/DailyGuidance/DailyGuidance/PomodoroStore.swift`
+1. `iOS/Pomodoro/Pomodoro/PomodoroActivityAttributes.swift`
+2. `iOS/Pomodoro/Shared/PomodoroSharedSession.swift`
+3. `iOS/Pomodoro/Pomodoro/GuidanceStore.swift`
+4. `iOS/Pomodoro/Pomodoro/PomodoroStore.swift`
 
 Understand these concepts first:
 
@@ -35,7 +35,7 @@ Understand these concepts first:
 
 ### Second pass: iPhone UI
 
-Read `iOS/DailyGuidance/DailyGuidance/ContentView.swift`:
+Read `iOS/Pomodoro/Pomodoro/ContentView.swift`:
 
 - `ContentView` is the home screen.
 - `GuidanceSheet` manages file state and editing sessions.
@@ -52,6 +52,7 @@ Read:
 1. `PomodoroLiveActivity/PomodoroLiveActivityBundle.swift`
 2. `PomodoroLiveActivity/PomodoroLiveActivity.swift`
 3. `PomodoroLiveActivity/PomodoroLiveActivityIntents.swift`
+4. `PomodoroLiveActivity/PomodoroLockScreenControl.swift` (the iOS 18+ bottom Lock Screen control)
 
 The Live Activity renders `PomodoroActivityAttributes.ContentState`. On iOS 17, buttons run App Intents that update `PomodoroSharedSession` in the App Group. The main app reconciles that state when notified or when it becomes active again.
 
@@ -167,6 +168,7 @@ The app reads both local and iCloud files and merges records. If an iCloud file 
 | Change guidance I/O or 30-day filtering | `GuidanceStore.swift` |
 | Change Lock Screen/Dynamic Island layout | `PomodoroLiveActivity.swift` |
 | Change Lock Screen button behavior | `PomodoroLiveActivityIntents.swift`, `PomodoroSharedSession.swift` |
+| Change the bottom Lock Screen control | `PomodoroLockScreenControl.swift` |
 | Change Mac menu, timer, or storage | `Sources/main.swift` |
 | Change Mac packaging | `scripts/build.sh` |
 

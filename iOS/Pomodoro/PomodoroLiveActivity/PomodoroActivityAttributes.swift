@@ -1,7 +1,7 @@
 // Live Activity 扩展使用的 ActivityKit 数据协议。
 //
 // 这是主 App 中同名类型的镜像。两个 target 分别编译，字段名称、类型和顺序必须保持一致；
-// 新增状态时请同时修改 `DailyGuidance/PomodoroActivityAttributes.swift`。
+// 新增状态时请同时修改 `Pomodoro/PomodoroActivityAttributes.swift`。
 import ActivityKit
 import Foundation
 

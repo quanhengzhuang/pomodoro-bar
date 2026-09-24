@@ -21,6 +21,7 @@
 		A1000000000000000000000C /* PomodoroSharedSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000D /* PomodoroSharedSession.swift */; };
 		A1000000000000000000000D /* PomodoroLiveActivityIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* PomodoroLiveActivityIntents.swift */; };
 		A1000000000000000000000E /* PomodoroLiveActivityIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2000000000000000000000E /* PomodoroLiveActivityIntents.swift */; };
+		A1000000000000000000000F /* PomodoroLockScreenControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = A20000000000000000000011 /* PomodoroLockScreenControl.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -40,6 +41,7 @@
 		A2000000000000000000000E /* PomodoroLiveActivityIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroLiveActivityIntents.swift; sourceTree = "<group>"; };
 		A2000000000000000000000F /* DailyGuidance.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = DailyGuidance.entitlements; sourceTree = "<group>"; };
 		A20000000000000000000010 /* PomodoroLiveActivity.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PomodoroLiveActivity.entitlements; sourceTree = "<group>"; };
+		A20000000000000000000011 /* PomodoroLockScreenControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PomodoroLockScreenControl.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -63,14 +65,14 @@
 		A40000000000000000000001 = {
 			isa = PBXGroup;
 			children = (
-				A40000000000000000000002 /* DailyGuidance */,
+				A40000000000000000000002 /* Pomodoro */,
 				A40000000000000000000005 /* Shared */,
 				A40000000000000000000004 /* PomodoroLiveActivity */,
 				A40000000000000000000003 /* Products */,
 			);
 			sourceTree = "<group>";
 		};
-		A40000000000000000000002 /* DailyGuidance */ = {
+		A40000000000000000000002 /* Pomodoro */ = {
 			isa = PBXGroup;
 			children = (
 				A20000000000000000000001 /* DailyGuidanceApp.swift */,
@@ -81,7 +83,7 @@
 				A2000000000000000000000F /* DailyGuidance.entitlements */,
 				A20000000000000000000004 /* Assets.xcassets */,
 			);
-			path = DailyGuidance;
+			path = Pomodoro;
 			sourceTree = "<group>";
 		};
 		A40000000000000000000003 /* Products */ = {
@@ -99,6 +101,7 @@
 				A20000000000000000000009 /* PomodoroActivityAttributes.swift */,
 				A2000000000000000000000A /* PomodoroLiveActivity.swift */,
 				A2000000000000000000000E /* PomodoroLiveActivityIntents.swift */,
+				A20000000000000000000011 /* PomodoroLockScreenControl.swift */,
 				A2000000000000000000000B /* PomodoroLiveActivityBundle.swift */,
 				A20000000000000000000010 /* PomodoroLiveActivity.entitlements */,
 				A2000000000000000000000C /* Info.plist */,
@@ -241,6 +244,7 @@
 				A10000000000000000000007 /* PomodoroActivityAttributes.swift in Sources */,
 				A10000000000000000000008 /* PomodoroLiveActivity.swift in Sources */,
 				A1000000000000000000000D /* PomodoroLiveActivityIntents.swift in Sources */,
+				A1000000000000000000000F /* PomodoroLockScreenControl.swift in Sources */,
 				A10000000000000000000009 /* PomodoroLiveActivityBundle.swift in Sources */,
 				A1000000000000000000000C /* PomodoroSharedSession.swift in Sources */,
 			);
@@ -317,7 +321,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = DailyGuidance/DailyGuidance.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Pomodoro/DailyGuidance.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FC6L2N43X9;
@@ -345,7 +349,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
-				CODE_SIGN_ENTITLEMENTS = DailyGuidance/DailyGuidance.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Pomodoro/DailyGuidance.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = FC6L2N43X9;

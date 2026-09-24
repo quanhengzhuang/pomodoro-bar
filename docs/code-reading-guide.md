@@ -7,8 +7,8 @@
 仓库里实际有三个运行单元：
 
 1. **Mac 菜单栏 App**：`Sources/main.swift`
-2. **iPhone 主 App**：`iOS/DailyGuidance/DailyGuidance/`
-3. **锁屏实时活动扩展**：`iOS/DailyGuidance/PomodoroLiveActivity/`
+2. **iPhone 主 App**：`iOS/Pomodoro/Pomodoro/`
+3. **锁屏实时活动扩展**：`iOS/Pomodoro/PomodoroLiveActivity/`
 
 Mac App 和 iPhone App 是两个独立程序。它们都能读取“今日指引”，但计时记录目前分别保存：Mac 记录优先进入 iCloud，iPhone 计时记录保存在自己的 App 沙盒。
 
@@ -20,10 +20,10 @@ iPhone 主 App 与实时活动扩展也是两个独立进程。它们通过 App 
 
 依次阅读：
 
-1. `iOS/DailyGuidance/DailyGuidance/PomodoroActivityAttributes.swift`
-2. `iOS/DailyGuidance/Shared/PomodoroSharedSession.swift`
-3. `iOS/DailyGuidance/DailyGuidance/GuidanceStore.swift`
-4. `iOS/DailyGuidance/DailyGuidance/PomodoroStore.swift`
+1. `iOS/Pomodoro/Pomodoro/PomodoroActivityAttributes.swift`
+2. `iOS/Pomodoro/Shared/PomodoroSharedSession.swift`
+3. `iOS/Pomodoro/Pomodoro/GuidanceStore.swift`
+4. `iOS/Pomodoro/Pomodoro/PomodoroStore.swift`
 
 先弄清楚这些核心概念：
 
@@ -35,7 +35,7 @@ iPhone 主 App 与实时活动扩展也是两个独立进程。它们通过 App 
 
 ### 第二遍：理解 iPhone 界面
 
-阅读 `iOS/DailyGuidance/DailyGuidance/ContentView.swift`：
+阅读 `iOS/Pomodoro/Pomodoro/ContentView.swift`：
 
 - `ContentView` 是首页。
 - `GuidanceSheet` 管理今日指引文件状态和编辑会话。
@@ -52,6 +52,7 @@ SwiftUI 的重要习惯是：View 描述“状态长什么样”，Store 决定�
 1. `PomodoroLiveActivity/PomodoroLiveActivityBundle.swift`
 2. `PomodoroLiveActivity/PomodoroLiveActivity.swift`
 3. `PomodoroLiveActivity/PomodoroLiveActivityIntents.swift`
+4. `PomodoroLiveActivity/PomodoroLockScreenControl.swift`（iOS 18+ 锁屏底部快捷控制）
 
 实时活动只负责显示 `PomodoroActivityAttributes.ContentState`。iOS 17 的按钮执行 App Intent，Intent 更新 App Group 中的 `PomodoroSharedSession`；主 App 收到通知或回到前台时再对账。
 
@@ -167,6 +168,7 @@ Mac 默认目录：
 | 修改今日指引读写或 30 天过滤 | `GuidanceStore.swift` |
 | 修改锁屏/灵动岛布局 | `PomodoroLiveActivity.swift` |
 | 修改锁屏按钮行为 | `PomodoroLiveActivityIntents.swift`、`PomodoroSharedSession.swift` |
+| 修改锁屏底部快捷控制 | `PomodoroLockScreenControl.swift` |
 | 修改 Mac 菜单、计时或数据 | `Sources/main.swift` |
 | 修改 Mac 打包过程 | `scripts/build.sh` |
 
