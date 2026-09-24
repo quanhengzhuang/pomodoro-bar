@@ -171,7 +171,7 @@
 					};
 				};
 			};
-			buildConfigurationList = A90000000000000000000001 /* Build configuration list for PBXProject "DailyGuidance" */;
+			buildConfigurationList = A90000000000000000000001 /* Build configuration list for PBXProject "Pomodoro" */;
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -415,7 +415,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		A90000000000000000000001 /* Build configuration list for PBXProject "DailyGuidance" */ = {
+		A90000000000000000000001 /* Build configuration list for PBXProject "Pomodoro" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				AA0000000000000000000001 /* Debug */,

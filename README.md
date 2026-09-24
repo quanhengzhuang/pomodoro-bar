@@ -54,7 +54,7 @@ dist/Pomodoro.app
 iOS App 工程位于：
 
 ```text
-iOS/DailyGuidance/DailyGuidance.xcodeproj
+iOS/DailyGuidance/Pomodoro.xcodeproj
 ```
 
 使用完整 Xcode 打开工程，选择 `PomodoroBar` target，在 Signing & Capabilities 中选择自己的 Apple Developer Team 后即可在模拟器或 iPhone 上运行。App 最低支持 iOS 16.1。

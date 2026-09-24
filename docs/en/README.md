@@ -54,7 +54,7 @@ If you are new to Swift, AppKit, SwiftUI, or Live Activities, start with the [so
 The iOS app project is located at:
 
 ```text
-iOS/DailyGuidance/DailyGuidance.xcodeproj
+iOS/DailyGuidance/Pomodoro.xcodeproj
 ```
 
 Open the project in the full Xcode application, select the `PomodoroBar` target, choose your Apple Developer Team under Signing & Capabilities, and run it in a simulator or on an iPhone. The app requires iOS 16.1 or later.

@@ -17,7 +17,7 @@
                BlueprintIdentifier = "A50000000000000000000001"
                BuildableName = "PomodoroBar.app"
                BlueprintName = "PomodoroBar"
-               ReferencedContainer = "container:DailyGuidance.xcodeproj">
+               ReferencedContainer = "container:Pomodoro.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -44,7 +44,7 @@
             BlueprintIdentifier = "A50000000000000000000001"
             BuildableName = "PomodoroBar.app"
             BlueprintName = "PomodoroBar"
-            ReferencedContainer = "container:DailyGuidance.xcodeproj">
+            ReferencedContainer = "container:Pomodoro.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -60,7 +60,7 @@
             BlueprintIdentifier = "A50000000000000000000001"
             BuildableName = "PomodoroBar.app"
             BlueprintName = "PomodoroBar"
-            ReferencedContainer = "container:DailyGuidance.xcodeproj">
+            ReferencedContainer = "container:Pomodoro.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>
