@@ -45,15 +45,7 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
-                        if guidanceStore.hasSelectedFile {
-                            // 每次打开前重新读文件，以看到 Mac/iCloud 的最新修改。
-                            guidanceStore.refresh()
-                            isShowingGuidance = true
-                        } else {
-                            isSelectingGuidance = true
-                        }
-                    } label: {
+                    Button(action: openGuidance) {
                         Image(systemName: "quote.opening")
                     }
                     .accessibilityLabel("今日指引")
@@ -251,14 +243,14 @@ struct ContentView: View {
         }
     }
 
-    /// 当天专注时长、记录数量和 Live Activity 状态摘要。
+    /// 今日指引状态、专注时长和完成时段摘要。
     private var todaySummary: some View {
         HStack(spacing: 0) {
+            summaryCell(value: guidanceStatus, label: "今日指引", action: openGuidance)
+            Divider().frame(height: 38)
             summaryCell(value: formattedDuration(store.todayFocusSeconds), label: "今日专注")
             Divider().frame(height: 38)
             summaryCell(value: "\(store.todaySessionCount)", label: "完成时段")
-            Divider().frame(height: 38)
-            summaryCell(value: liveActivityStatus, label: "实时活动")
         }
         .padding(.vertical, 16)
         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.card))
@@ -296,9 +288,10 @@ struct ContentView: View {
         }
     }
 
-    /// 三列摘要中复用的单元格。
-    private func summaryCell(value: String, label: String) -> some View {
-        VStack(spacing: 4) {
+    /// 三列摘要中复用的单元格；今日指引单元格额外作为页面入口。
+    @ViewBuilder
+    private func summaryCell(value: String, label: String, action: (() -> Void)? = nil) -> some View {
+        let content = VStack(spacing: 4) {
             Text(value)
                 .font(.subheadline.weight(.bold))
                 .monospacedDigit()
@@ -307,6 +300,17 @@ struct ContentView: View {
                 .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
+
+        if let action {
+            Button(action: action) {
+                content
+            }
+            .buttonStyle(.plain)
+            .contentShape(Rectangle())
+            .accessibilityLabel("\(label)，\(value)")
+        } else {
+            content
+        }
     }
 
     /// 很淡的品牌色渐变，在深浅色模式中都以系统背景为主。
@@ -321,6 +325,22 @@ struct ContentView: View {
 
     // MARK: - 首页显示文本
 
+    private var guidanceStatus: String {
+        guidanceStore.todayGuidance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? "未设置"
+            : "已设置"
+    }
+
+    private func openGuidance() {
+        if guidanceStore.hasSelectedFile {
+            // 每次打开前重新读文件，以看到 Mac/iCloud 的最新修改。
+            guidanceStore.refresh()
+            isShowingGuidance = true
+        } else {
+            isSelectingGuidance = true
+        }
+    }
+
     private var statusText: String {
         guard store.hasActiveSession else { return "准备开始" }
         return store.isRunning ? "正在进行" : "已暂停"
@@ -329,11 +349,6 @@ struct ContentView: View {
     private var primaryActionSymbol: String {
         guard store.hasActiveSession else { return "play.fill" }
         return store.isRunning ? "pause.fill" : "play.fill"
-    }
-
-    private var liveActivityStatus: String {
-        guard store.liveActivityEnabled else { return "未启用" }
-        return store.hasActiveSession ? "已开启" : "待开始"
     }
 
     private func formattedTime(_ seconds: Int) -> String {
