@@ -5,7 +5,7 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-/// App 首页：模式选择、计时盘、控制按钮、今日统计和最近记录。
+/// App 首页：模式选择、计时盘、控制按钮、今日统计和今日指引。
 struct ContentView: View {
     /// 由 App 入口创建并注入；ObservedObject 表示本视图不拥有其生命周期。
     @ObservedObject var store: PomodoroStore
@@ -20,6 +20,8 @@ struct ContentView: View {
     // 以下 State 只属于当前页面交互，不需要写入业务 Store。
     @State private var isSelectingGuidance = false
     @State private var isShowingGuidance = false
+    @State private var isEditingGuidanceOnOpen = false
+    @State private var isShowingRecords = false
     @State private var isEditingNote = false
     @State private var isAdjustingTime = false
     @State private var draftNote = ""
@@ -34,7 +36,7 @@ struct ContentView: View {
                     timerFace
                     controls
                     todaySummary
-                    recentRecords
+                    todayGuidanceCard
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 10)
@@ -64,10 +66,13 @@ struct ContentView: View {
             isShowingGuidance = true
         }
         .sheet(isPresented: $isShowingGuidance) {
-            GuidanceSheet(store: guidanceStore) {
+            GuidanceSheet(store: guidanceStore, startEditingToday: isEditingGuidanceOnOpen) {
                 isShowingGuidance = false
                 isSelectingGuidance = true
             }
+        }
+        .sheet(isPresented: $isShowingRecords) {
+            FocusRecordsSheet(store: store)
         }
         .alert("本段备注", isPresented: $isEditingNote) {
             TextField("例如：写方案、读论文、修 bug", text: $draftNote)
@@ -243,10 +248,12 @@ struct ContentView: View {
         }
     }
 
-    /// 今日指引状态、专注时长和完成时段摘要。
+    /// 专注记录入口、今日专注时长和完成时段摘要。
     private var todaySummary: some View {
         HStack(spacing: 0) {
-            summaryCell(value: "今日指引", label: guidanceStatus, action: openGuidance)
+            summaryCell(value: "专注记录", label: "\(store.records.count) 条记录") {
+                isShowingRecords = true
+            }
             Divider().frame(height: 38)
             summaryCell(value: formattedDuration(store.todayFocusSeconds), label: "今日专注")
             Divider().frame(height: 38)
@@ -256,39 +263,48 @@ struct ContentView: View {
         .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.card))
     }
 
-    /// 最多显示 Store 提供的五条最近记录；无记录时完全隐藏区域。
-    @ViewBuilder
-    private var recentRecords: some View {
-        if !store.recentRecords.isEmpty {
-            VStack(alignment: .leading, spacing: 14) {
-                Text("最近记录")
-                    .font(.headline)
-
-                ForEach(store.recentRecords) { record in
-                    HStack(spacing: 12) {
-                        Image(systemName: record.mode.symbolName)
-                            .font(.callout.weight(.semibold))
-                            .foregroundStyle(record.mode == .focus ? Color.tomato : Color.leaf)
-                            .frame(width: 34, height: 34)
-                            .background(Circle().fill(Color.card))
-
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(record.note.isEmpty ? record.mode.title : record.note)
-                                .font(.subheadline.weight(.semibold))
-                                .lineLimit(1)
-                            Text("\(record.timeRange) · \(formattedDuration(record.durationSeconds))")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
+    /// 首页始终显示今天的内容或可操作的文件状态，不再占用空间列出计时记录。
+    private var todayGuidanceCard: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("今日指引")
+                        .font(.headline)
+                    Text("\(guidanceStore.todayDateKey) · \(guidanceStatus)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
+                Spacer(minLength: 0)
+                Button(action: editTodaysGuidance) {
+                    Label("修改", systemImage: "square.and.pencil")
+                        .font(.subheadline.weight(.semibold))
+                }
+                .accessibilityLabel("修改今日指引")
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+
+            switch guidanceStore.state {
+            case .noFile:
+                Text("请选择今日指引数据文件。")
+                    .foregroundStyle(.secondary)
+            case .loading:
+                ProgressView("正在读取今日指引…")
+            case .content(let guidance):
+                Text(guidance)
+                    .textSelection(.enabled)
+            case .empty:
+                Text("今天还没有指引")
+                    .foregroundStyle(.secondary)
+            case .error(let message):
+                Text(message)
+                    .foregroundStyle(.secondary)
+            }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(18)
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.card))
     }
 
-    /// 三列摘要中复用的单元格；今日指引单元格额外作为页面入口。
+    /// 三列摘要中复用的单元格；专注记录单元格额外作为页面入口。
     @ViewBuilder
     private func summaryCell(value: String, label: String, action: (() -> Void)? = nil) -> some View {
         let content = VStack(spacing: 4) {
@@ -326,12 +342,25 @@ struct ContentView: View {
     // MARK: - 首页显示文本
 
     private var guidanceStatus: String {
-        guidanceStore.todayGuidance.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ? "未设置"
-            : "已设置"
+        switch guidanceStore.state {
+        case .noFile: return "未选择文件"
+        case .loading: return "读取中"
+        case .content: return "已设置"
+        case .empty: return "未设置"
+        case .error: return "读取失败"
+        }
     }
 
     private func openGuidance() {
+        showGuidance(editingToday: false)
+    }
+
+    private func editTodaysGuidance() {
+        showGuidance(editingToday: true)
+    }
+
+    private func showGuidance(editingToday: Bool) {
+        isEditingGuidanceOnOpen = editingToday
         if guidanceStore.hasSelectedFile {
             // 每次打开前重新读文件，以看到 Mac/iCloud 的最新修改。
             guidanceStore.refresh()
@@ -363,11 +392,83 @@ struct ContentView: View {
     }
 }
 
+// MARK: - 专注记录 Sheet
+
+/// 展示全部本机计时记录；只读页面不会改动记录文件。
+private struct FocusRecordsSheet: View {
+    @ObservedObject var store: PomodoroStore
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                if store.records.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 36, weight: .light))
+                        Text("暂无专注记录")
+                            .font(.headline)
+                        Text("完成一个时段后，记录会显示在这里。")
+                            .font(.subheadline)
+                    }
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 80)
+                } else {
+                    LazyVStack(spacing: 12) {
+                        ForEach(store.records.reversed()) { record in
+                            recordRow(record)
+                        }
+                    }
+                    .padding(16)
+                }
+            }
+            .navigationTitle("专注记录")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("关闭") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func recordRow(_ record: PomodoroRecord) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: record.mode.symbolName)
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(record.mode == .focus ? Color.tomato : Color.leaf)
+                .frame(width: 34, height: 34)
+                .background(Circle().fill(Color(uiColor: .secondarySystemBackground)))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(record.note.isEmpty ? record.mode.title : record.note)
+                    .font(.subheadline.weight(.semibold))
+                Text("\(record.date) · \(record.timeRange) · \(durationText(record.durationSeconds))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.card))
+    }
+
+    private func durationText(_ seconds: Int) -> String {
+        if seconds >= 3600 {
+            return String(format: "%d小时%02d分", seconds / 3600, (seconds % 3600) / 60)
+        }
+        return "\(seconds / 60)分钟"
+    }
+}
+
 // MARK: - 今日指引 Sheet
 
 /// 今日指引的模态页面，负责文件状态、编辑会话、保存/取消工具栏和错误提示。
 private struct GuidanceSheet: View {
     @ObservedObject var store: GuidanceStore
+    let startEditingToday: Bool
     let selectAnotherFile: () -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -440,6 +541,9 @@ private struct GuidanceSheet: View {
         .onAppear {
             // Sheet 首次出现时让草稿与 Store 对齐。
             draftGuidance = store.todayGuidance
+            if startEditingToday && canEditGuidance {
+                beginEditing(store.todayDateKey, store.todayGuidance)
+            }
         }
         .onChange(of: store.todayGuidance) { guidance in
             // 编辑过程中不要用外部刷新覆盖用户尚未保存的输入。
