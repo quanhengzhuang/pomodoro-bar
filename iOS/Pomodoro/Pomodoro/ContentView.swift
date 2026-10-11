@@ -265,11 +265,11 @@ struct ContentView: View {
 
     /// 首页始终显示今天的内容或可操作的文件状态，不再占用空间列出计时记录。
     private var todayGuidanceCard: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 6) {
                     Text("今日指引")
-                        .font(.headline)
+                        .font(.title3.weight(.semibold))
                     Text("\(guidanceStore.todayDateKey) · \(guidanceStatus)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -278,7 +278,12 @@ struct ContentView: View {
                 Button(action: editTodaysGuidance) {
                     Label("修改", systemImage: "square.and.pencil")
                         .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(guidanceColor)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .background(Capsule().fill(guidanceColor.opacity(0.12)))
                 }
+                .buttonStyle(.plain)
                 .accessibilityLabel("修改今日指引")
             }
 
@@ -290,6 +295,17 @@ struct ContentView: View {
                 ProgressView("正在读取今日指引…")
             case .content(let guidance):
                 Text(guidance)
+                    .font(.body)
+                    .foregroundStyle(guidanceColor)
+                    .lineSpacing(5)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.leading, 14)
+                    .overlay(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(guidanceColor.opacity(0.65))
+                            .frame(width: 3)
+                            .allowsHitTesting(false)
+                    }
                     .textSelection(.enabled)
             case .empty:
                 Text("今天还没有指引")
@@ -300,8 +316,12 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(18)
+        .padding(20)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.card))
+    }
+
+    private var guidanceColor: Color {
+        Color.guidance(for: colorScheme)
     }
 
     /// 三列摘要中复用的单元格；专注记录单元格额外作为页面入口。
@@ -574,9 +594,7 @@ private struct GuidanceSheet: View {
 
     /// 与正文相同的暖黄色，用于状态图标。
     private var guidanceColor: Color {
-        colorScheme == .dark
-            ? Color(red: 0.98, green: 0.73, blue: 0.22)
-            : Color(red: 0.58, green: 0.39, blue: 0.05)
+        Color.guidance(for: colorScheme)
     }
 
     /// 只有文件已成功读取后才允许进入编辑，避免在错误状态下覆盖文件。
@@ -741,9 +759,7 @@ private struct GuidanceEntryCard: View {
 
     /// 深色模式使用更亮的黄，浅色模式使用更深的棕黄以满足对比度。
     private var guidanceColor: Color {
-        colorScheme == .dark
-            ? Color(red: 0.98, green: 0.73, blue: 0.22)
-            : Color(red: 0.58, green: 0.39, blue: 0.05)
+        Color.guidance(for: colorScheme)
     }
 
     /// 占位文案同时区分今天/历史和编辑/只读状态。
@@ -923,4 +939,11 @@ private extension Color {
     static let tomatoLight = Color(red: 1.0, green: 0.45, blue: 0.30)
     static let leaf = Color(red: 0.14, green: 0.54, blue: 0.30)
     static let card = Color(uiColor: .secondarySystemBackground)
+
+    /// 今日指引在首页与详情页共用相同的深浅色正文颜色。
+    static func guidance(for colorScheme: ColorScheme) -> Color {
+        colorScheme == .dark
+            ? Color(red: 0.98, green: 0.73, blue: 0.22)
+            : Color(red: 0.58, green: 0.39, blue: 0.05)
+    }
 }
