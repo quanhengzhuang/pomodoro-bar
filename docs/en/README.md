@@ -65,6 +65,12 @@ On iOS 18 or later, you can also add the “Open Pomodoro” Lock Screen control
 
 The quote button in the top-right corner opens Daily Guidance with Chinese dates such as “2026年9月17日 星期四”. You can edit and save today’s entry or any non-empty historical entry from the most recent 30 calendar days; edit mode shows only the selected date’s card for a focused workspace. Editing and display states share the same warm-amber italics, font size, line spacing, padding, and wrapping width. On first use, select `iCloud Drive/PomodoroBar/daily-guidance.json` in the system file picker; saving updates only the selected date and preserves all others. iOS timer records stay in the app's own sandbox and never overwrite or delete Mac data.
 
+## Photo Trip Timeline iPhone App
+
+The standalone project is at `iOS/PhotoTimeline/PhotoTimeline.xcodeproj`. Open it in Xcode and run it in a simulator or on an iPhone with iOS 16.1 or later. Create a trip and select multiple photos; the app reads embedded capture times when available and lays out the photos as timeline points with the interval between adjacent points. Each point can have a place or note, and its time can be added or corrected. Photos without a capture time appear last.
+
+Trips, photo copies, and notes stay in this app's local container. Import does not modify the Photos library or Pomodoro records. If a photo has no time zone metadata, the app interprets its time in the phone's current time zone; you can correct it in the point editor.
+
 ## Record Format
 
 ```json
