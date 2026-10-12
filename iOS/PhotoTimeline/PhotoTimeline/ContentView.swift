@@ -421,16 +421,20 @@ private struct TripDetailView: View {
                 if index > 0, let previous = sortedPoints[index - 1].capturedAt,
                    let current = point.capturedAt {
                     let color = intervalColor(current.timeIntervalSince(previous))
-                    Text(intervalDescription(from: sortedPoints[index - 1], to: point))
-                        .font(.caption.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(color)
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity, minHeight: 38)
-                        .background(alignment: .leading) {
-                            Rectangle().fill(color.opacity(0.4))
-                                .frame(width: 2, height: 30)
-                                .frame(width: 50, height: 38, alignment: .top)
-                        }
+                    HStack(spacing: 18) {
+                        Color.clear.frame(width: 50)
+                        Text(intervalDescription(from: sortedPoints[index - 1], to: point))
+                            .font(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(color)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 38)
+                    .background(alignment: .leading) {
+                        Rectangle().fill(color.opacity(0.4))
+                            .frame(width: 2, height: 30)
+                            .frame(width: 50, height: 38, alignment: .top)
+                    }
                 } else if index > 0 {
                     Rectangle().fill(Palette.blue.opacity(0.4))
                         .frame(width: 2, height: 20)
@@ -495,25 +499,31 @@ private struct TripDetailView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 10))
 
                         VStack(alignment: .leading, spacing: 4) {
-                            if let time = point.capturedAt {
-                                Text(time.formatted(.dateTime.month().day().hour().minute()))
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Palette.blue)
-                            } else {
-                                Text("补录拍摄时间")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Palette.coral)
+                            HStack(spacing: 8) {
+                                if let time = point.capturedAt {
+                                    Text(time.formatted(.dateTime.month().day().hour().minute()))
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .layoutPriority(1)
+                                } else {
+                                    Text("补录拍摄时间")
+                                        .font(.subheadline)
+                                        .foregroundStyle(Palette.coral)
+                                }
+                                if let place = displayPlace(for: point) {
+                                    Spacer(minLength: 4)
+                                    Text(place)
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
+                                }
                             }
                             Text(point.note.isEmpty ? "添加备注" : point.note)
                                 .font(.subheadline)
                                 .foregroundStyle(point.note.isEmpty ? Palette.ink.opacity(0.48) : Palette.ink)
                                 .lineLimit(1)
-                            if let place = displayPlace(for: point) {
-                                Label(place, systemImage: "mappin")
-                                    .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Palette.blue)
-                                    .lineLimit(1)
-                            }
                             if index > 0, let previous = sortedPoints[index - 1].capturedAt,
                                let current = point.capturedAt {
                                 Text(intervalDescription(from: sortedPoints[index - 1], to: point))
@@ -626,23 +636,24 @@ private struct TripDetailView: View {
                         Group {
                             if let time = point.capturedAt {
                                 Text(Self.cardTimeFormatter.string(from: time))
-                                    .foregroundStyle(Palette.blue)
+                                    .foregroundStyle(.secondary)
                             } else {
                                 Text("缺少拍摄时间 · 点此补录")
                                     .foregroundStyle(Palette.coral)
                             }
                         }
-                        .font(.subheadline.weight(.semibold))
+                        .font(.subheadline)
                         .lineLimit(1)
                     }
                     .buttonStyle(.plain)
                     .layoutPriority(1)
 
                     if let place = displayPlace(for: point) {
+                        Spacer(minLength: 8)
                         Button { openPlaceInMaps(for: point) } label: {
                             Text(place)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(Palette.blue)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }
@@ -653,7 +664,7 @@ private struct TripDetailView: View {
                 if !point.note.isEmpty {
                     Button { editingPoint = point } label: {
                         Text(point.note)
-                            .font(.title3)
+                            .font(.system(size: 18))
                             .foregroundStyle(Palette.ink)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -710,18 +721,15 @@ private struct TripDetailView: View {
     }
 
     private func formatInterval(_ interval: TimeInterval) -> String {
-        var seconds = max(0, Int(interval.rounded()))
-        let days = seconds / 86_400
-        seconds %= 86_400
-        let hours = seconds / 3_600
-        seconds %= 3_600
-        let minutes = seconds / 60
-        seconds %= 60
+        var totalMinutes = max(0, Int(interval / 60))
+        let days = totalMinutes / 1_440
+        totalMinutes %= 1_440
+        let hours = totalMinutes / 60
+        let minutes = totalMinutes % 60
         var parts: [String] = []
         if days > 0 { parts.append("\(days)天") }
         if hours > 0 { parts.append("\(hours)小时") }
-        if minutes > 0 { parts.append("\(minutes)分") }
-        if seconds > 0 || parts.isEmpty { parts.append("\(seconds)秒") }
+        if minutes > 0 || parts.isEmpty { parts.append("\(minutes)分") }
         return parts.joined(separator: " ")
     }
 
@@ -748,9 +756,9 @@ private struct TripDetailView: View {
     }
 
     private func displayPlace(for point: PhotoPoint) -> String? {
-        if let name = point.placeName, !name.isEmpty { return name }
-        guard let latitude = point.latitude, let longitude = point.longitude else { return nil }
-        return String(format: "%.4f, %.4f", latitude, longitude)
+        guard let name = point.placeName?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty else { return nil }
+        return name
     }
 }
 
