@@ -3,13 +3,13 @@ import PhotosUI
 import CoreLocation
 
 private enum Palette {
-    static let ink = Color(red: 0.08, green: 0.18, blue: 0.23)
-    static let blue = Color(red: 0.18, green: 0.43, blue: 0.53)
-    static let mist = Color(red: 0.91, green: 0.95, blue: 0.95)
-    static let paper = Color(red: 0.98, green: 0.99, blue: 0.98)
-    static let coral = Color(red: 0.96, green: 0.40, blue: 0.30)
-    static let warning = Color(red: 0.58, green: 0.39, blue: 0.05)
-    static let shortInterval = Color(red: 0.16, green: 0.49, blue: 0.32)
+    static let ink = Color(red: 32 / 255.0, green: 36 / 255.0, blue: 66 / 255.0)
+    static let accent = Color(red: 85 / 255.0, green: 70 / 255.0, blue: 219 / 255.0)
+    static let soft = Color(red: 238 / 255.0, green: 234 / 255.0, blue: 254 / 255.0)
+    static let paper = Color(red: 248 / 255.0, green: 247 / 255.0, blue: 255 / 255.0)
+    static let action = Color(red: 211 / 255.0, green: 50 / 255.0, blue: 106 / 255.0)
+    static let warning = Color(red: 145 / 255.0, green: 97 / 255.0, blue: 0)
+    static let shortInterval = Color(red: 22 / 255.0, green: 130 / 255.0, blue: 89 / 255.0)
 }
 
 private enum TimelineSectionID: Hashable {
@@ -103,7 +103,7 @@ struct ContentView: View {
                 }
             }
         }
-        .tint(Palette.blue)
+        .tint(Palette.accent)
     }
 
     private var header: some View {
@@ -121,7 +121,7 @@ struct ContentView: View {
                         .font(.headline)
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
-                        .background(Palette.coral, in: Circle())
+                        .background(Palette.action, in: Circle())
                 }
                 .accessibilityLabel("新建行程")
             }
@@ -134,7 +134,7 @@ struct ContentView: View {
                     .font(.caption.weight(.bold))
                     .tracking(1.2)
             }
-            .foregroundStyle(Palette.blue)
+            .foregroundStyle(Palette.accent)
             .padding(.top, 10)
         }
     }
@@ -143,7 +143,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 16) {
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 42, weight: .light))
-                .foregroundStyle(Palette.blue)
+                .foregroundStyle(Palette.accent)
             Text("先创建一段行程")
                 .font(.system(size: 25, weight: .semibold, design: .serif))
                 .foregroundStyle(Palette.ink)
@@ -155,12 +155,12 @@ struct ContentView: View {
                 showingNewTrip = true
             }
             .buttonStyle(.borderedProminent)
-            .tint(Palette.coral)
+            .tint(Palette.action)
             .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(24)
-        .background(Palette.mist, in: RoundedRectangle(cornerRadius: 22))
+        .background(Palette.soft, in: RoundedRectangle(cornerRadius: 22))
     }
 
     private func tripCard(_ trip: Trip) -> some View {
@@ -172,9 +172,9 @@ struct ContentView: View {
             } else {
                 Image(systemName: "map")
                     .font(.title2)
-                    .foregroundStyle(Palette.blue)
+                    .foregroundStyle(Palette.accent)
                     .frame(width: 74, height: 74)
-                    .background(Palette.mist, in: RoundedRectangle(cornerRadius: 12))
+                    .background(Palette.soft, in: RoundedRectangle(cornerRadius: 12))
             }
             VStack(alignment: .leading, spacing: 6) {
                 Text(trip.title)
@@ -185,16 +185,16 @@ struct ContentView: View {
                     .foregroundStyle(Palette.ink.opacity(0.6))
                 Text(trip.createdAt.formatted(date: .abbreviated, time: .omitted))
                     .font(.caption.monospacedDigit())
-                    .foregroundStyle(Palette.blue)
+                    .foregroundStyle(Palette.accent)
             }
             Spacer(minLength: 0)
             Image(systemName: "chevron.right")
                 .font(.caption.bold())
-                .foregroundStyle(Palette.blue)
+                .foregroundStyle(Palette.accent)
         }
         .padding(12)
         .background(.white, in: RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.mist, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.soft, lineWidth: 1))
     }
 
     private var newTripSheet: some View {
@@ -230,8 +230,8 @@ struct ContentView: View {
             if let image = UIImage(contentsOfFile: store.thumbnailURL(for: point).path) {
                 Image(uiImage: image).resizable().scaledToFill()
             } else {
-                Rectangle().fill(Palette.mist)
-                    .overlay(Image(systemName: "photo").foregroundStyle(Palette.blue))
+                Rectangle().fill(Palette.soft)
+                    .overlay(Image(systemName: "photo").foregroundStyle(Palette.accent))
             }
         }
         .clipped()
@@ -298,7 +298,7 @@ private struct TripDetailView: View {
                             } label: {
                                 Image(systemName: "pencil")
                                     .frame(width: 38, height: 38)
-                                    .background(Palette.mist, in: Circle())
+                                    .background(Palette.soft, in: Circle())
                             }
                             .accessibilityLabel("修改行程名称")
                         }
@@ -314,7 +314,7 @@ private struct TripDetailView: View {
                             .font(.headline)
                             .foregroundStyle(.white)
                             .padding(17)
-                            .background(Palette.coral, in: RoundedRectangle(cornerRadius: 16))
+                            .background(Palette.action, in: RoundedRectangle(cornerRadius: 16))
                             .contentShape(RoundedRectangle(cornerRadius: 16))
                         }
                         .disabled(importing)
@@ -330,10 +330,10 @@ private struct TripDetailView: View {
                                     Label(compactMode ? "大图" : "小图",
                                           systemImage: compactMode ? "photo" : "square.grid.2x2")
                                         .font(.subheadline.weight(.semibold))
-                                        .foregroundStyle(Palette.blue)
+                                        .foregroundStyle(Palette.accent)
                                         .padding(.horizontal, 14)
                                         .frame(height: 40)
-                                        .background(Palette.mist, in: Capsule())
+                                        .background(Palette.soft, in: Capsule())
                                 }
                                 .buttonStyle(.plain)
                                 .accessibilityLabel(compactMode ? "切换为大图" : "切换为小图")
@@ -403,7 +403,7 @@ private struct TripDetailView: View {
         VStack(alignment: .leading, spacing: 10) {
             Image(systemName: "clock.arrow.circlepath")
                 .font(.largeTitle)
-                .foregroundStyle(Palette.blue)
+                .foregroundStyle(Palette.accent)
             Text("这段行程还没有照片")
                 .font(.headline)
                 .foregroundStyle(Palette.ink)
@@ -413,7 +413,7 @@ private struct TripDetailView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(22)
-        .background(Palette.mist, in: RoundedRectangle(cornerRadius: 20))
+        .background(Palette.soft, in: RoundedRectangle(cornerRadius: 20))
     }
 
     private var timeline: some View {
@@ -440,7 +440,7 @@ private struct TripDetailView: View {
                             .frame(width: 28)
                     }
                 } else if index > 0 {
-                    Rectangle().fill(Palette.blue.opacity(0.4))
+                    Rectangle().fill(Palette.accent.opacity(0.4))
                         .frame(width: 2, height: 28)
                         .frame(width: 28)
                 }
@@ -448,7 +448,7 @@ private struct TripDetailView: View {
                     if isNewDay {
                         dateCircle(for: point)
                     } else {
-                        Circle().fill(Palette.blue)
+                        Circle().fill(Palette.accent)
                             .frame(width: 14, height: 14)
                             .overlay(Circle().stroke(Palette.paper, lineWidth: 3))
                             .frame(width: 28, height: 40)
@@ -461,7 +461,7 @@ private struct TripDetailView: View {
                         let lineHeight = index == sortedPoints.count - 1
                             ? topPadding + (isNewDay ? 28 : 20)
                             : proxy.size.height
-                        Rectangle().fill(Palette.blue.opacity(0.4))
+                        Rectangle().fill(Palette.accent.opacity(0.4))
                             .frame(width: 2, height: lineHeight)
                             .position(x: 14, y: lineHeight / 2)
                     }
@@ -475,7 +475,7 @@ private struct TripDetailView: View {
     }
 
     private func dateCircle(for point: PhotoPoint) -> some View {
-        let color = point.capturedAt == nil ? Palette.coral : Palette.blue
+        let color = point.capturedAt == nil ? Palette.action : Palette.accent
         return VStack(spacing: 3) {
             if let date = point.capturedAt {
                 Text(date.formatted(.dateTime.month(.twoDigits).day(.twoDigits)))
@@ -520,7 +520,7 @@ private struct TripDetailView: View {
                             } else {
                                 Text("补录拍摄时间")
                                     .font(.subheadline.weight(.semibold))
-                                    .foregroundStyle(Palette.coral)
+                                    .foregroundStyle(Palette.action)
                             }
                             Text(point.note.isEmpty ? "添加备注" : point.note)
                                 .font(.subheadline)
@@ -529,7 +529,7 @@ private struct TripDetailView: View {
                             if let place = displayPlace(for: point) {
                                 Label(place, systemImage: "mappin")
                                     .font(.caption)
-                                    .foregroundStyle(Palette.blue)
+                                    .foregroundStyle(Palette.accent)
                                     .lineLimit(1)
                             }
                             if index > 0, let previous = sortedPoints[index - 1].capturedAt,
@@ -543,12 +543,12 @@ private struct TripDetailView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.semibold))
-                            .foregroundStyle(Palette.blue.opacity(0.65))
+                            .foregroundStyle(Palette.accent.opacity(0.65))
                     }
                     .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(.white, in: RoundedRectangle(cornerRadius: 14))
-                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Palette.mist, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Palette.soft, lineWidth: 1))
                     .contentShape(RoundedRectangle(cornerRadius: 14))
                 }
                 .buttonStyle(.plain)
@@ -576,7 +576,7 @@ private struct TripDetailView: View {
     }
 
     private func dayDivider(for point: PhotoPoint) -> some View {
-        let color = point.capturedAt == nil ? Palette.coral : Palette.blue
+        let color = point.capturedAt == nil ? Palette.action : Palette.accent
         return HStack(spacing: 9) {
             Image(systemName: point.capturedAt == nil ? "clock.badge.questionmark" : "calendar")
                 .font(.caption.weight(.bold))
@@ -613,7 +613,7 @@ private struct TripDetailView: View {
     private func intervalColor(_ interval: TimeInterval) -> Color {
         if interval > 2 * 60 * 60 { return Palette.warning }
         if interval < 20 * 60 { return Palette.shortInterval }
-        return Palette.blue
+        return Palette.accent
     }
 
     @ViewBuilder
@@ -621,8 +621,8 @@ private struct TripDetailView: View {
         if let image = UIImage(contentsOfFile: store.thumbnailURL(for: point).path) {
             FramedPhoto(image: image, x: point.framingX ?? 0.5, y: point.framingY ?? 0.5)
         } else {
-            Rectangle().fill(Palette.mist)
-                .overlay(Image(systemName: "photo").foregroundStyle(Palette.blue))
+            Rectangle().fill(Palette.soft)
+                .overlay(Image(systemName: "photo").foregroundStyle(Palette.accent))
         }
     }
 
@@ -644,10 +644,10 @@ private struct TripDetailView: View {
                         Group {
                             if let time = point.capturedAt {
                                 Text(Self.cardTimeFormatter.string(from: time))
-                                    .foregroundStyle(Palette.blue)
+                                    .foregroundStyle(Palette.accent)
                             } else {
                                 Text("缺少拍摄时间 · 点此补录")
-                                    .foregroundStyle(Palette.coral)
+                                    .foregroundStyle(Palette.action)
                             }
                         }
                         .font(.subheadline.weight(.semibold).monospacedDigit())
@@ -663,7 +663,7 @@ private struct TripDetailView: View {
                         Button { openPlaceInMaps(for: point) } label: {
                             Text(place)
                                 .font(.subheadline)
-                                .foregroundStyle(Palette.blue)
+                                .foregroundStyle(Palette.accent)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }
@@ -686,7 +686,7 @@ private struct TripDetailView: View {
         }
         .background(.white, in: RoundedRectangle(cornerRadius: 18))
         .clipShape(RoundedRectangle(cornerRadius: 18))
-        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.mist, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.soft, lineWidth: 1))
         .contentShape(RoundedRectangle(cornerRadius: 18))
     }
 
