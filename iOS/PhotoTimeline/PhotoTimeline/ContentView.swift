@@ -428,8 +428,8 @@ private struct TripDetailView: View {
                 if index > 0, let previous = sortedPoints[index - 1].capturedAt,
                    let current = point.capturedAt {
                     let color = intervalColor(current.timeIntervalSince(previous))
-                    HStack(spacing: 24) {
-                        Color.clear.frame(width: 28)
+                    HStack(spacing: 12) {
+                        Color.clear.frame(width: 62)
                         Text(intervalDescription(from: sortedPoints[index - 1], to: point))
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(color)
@@ -439,37 +439,39 @@ private struct TripDetailView: View {
                     .frame(minHeight: 38)
                     .frame(maxWidth: .infinity)
                     .background(alignment: .leading) {
-                        Rectangle().fill(color.opacity(0.4))
-                            .frame(width: 2)
-                            .frame(width: 28)
+                        GeometryReader { proxy in
+                            Rectangle().fill(color.opacity(0.4))
+                                .frame(width: 2, height: max(0, proxy.size.height - 8))
+                                .position(x: 31, y: max(0, proxy.size.height - 8) / 2)
+                        }
                     }
                 } else if index > 0 {
                     Rectangle().fill(Palette.accent.opacity(0.4))
-                        .frame(width: 2, height: 28)
-                        .frame(width: 28)
+                        .frame(width: 2, height: 20)
+                        .frame(width: 62, height: 28, alignment: .top)
                 }
-                HStack(alignment: .top, spacing: 24) {
+                HStack(alignment: .top, spacing: 12) {
                     if isNewDay {
                         dateCircle(for: point)
                     } else {
                         Circle().fill(Palette.accent)
                             .frame(width: 14, height: 14)
                             .overlay(Circle().stroke(Palette.paper, lineWidth: 3))
-                            .frame(width: 28, height: 40)
+                            .frame(width: 62, height: 40)
                     }
                     pointCard(point)
                 }
                 .padding(.top, topPadding)
                 .background(alignment: .topLeading) {
                     GeometryReader { proxy in
-                        let markerBottom = topPadding + (isNewDay ? 56.0 : 27.0)
+                        let markerBottom = topPadding + (isNewDay ? 62.0 : 27.0)
                         let lineStart = markerBottom + 8
                         if index + 1 < sortedPoints.count,
                            !startsNewYear(at: index + 1),
                            proxy.size.height > lineStart {
                             Rectangle().fill(Palette.accent.opacity(0.4))
                                 .frame(width: 2, height: proxy.size.height - lineStart)
-                                .position(x: 14, y: (lineStart + proxy.size.height) / 2)
+                                .position(x: 31, y: (lineStart + proxy.size.height) / 2)
                         }
                     }
                     .allowsHitTesting(false)
@@ -478,7 +480,6 @@ private struct TripDetailView: View {
             }
         }
         .padding(.top, 4)
-        .padding(.trailing, -10)
     }
 
     private func dateCircle(for point: PhotoPoint) -> some View {
@@ -493,9 +494,8 @@ private struct TripDetailView: View {
             }
         }
         .foregroundStyle(.white)
-        .frame(width: 56, height: 56)
+        .frame(width: 62, height: 62)
         .background(color, in: Circle())
-        .frame(width: 28, height: 56)
         .accessibilityLabel(point.capturedAt.map {
             $0.formatted(.dateTime.year().month().day().weekday(.wide))
         } ?? "待补录时间")
@@ -676,6 +676,7 @@ private struct TripDetailView: View {
                         }
                         .font(.subheadline.weight(.semibold).monospacedDigit())
                         .lineLimit(1)
+                        .minimumScaleFactor(0.8)
                     }
                     .buttonStyle(.plain)
                     .layoutPriority(1)
@@ -686,7 +687,7 @@ private struct TripDetailView: View {
                     if let place = displayPlace(for: point) {
                         Button { openPlaceInMaps(for: point) } label: {
                             Text(place)
-                                .font(.subheadline)
+                                .font(.caption)
                                 .foregroundStyle(Palette.accent)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
