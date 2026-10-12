@@ -770,7 +770,7 @@ private struct PointEditor: View {
     @State private var capturedAt: Date
     @State private var framingX: Double
     @State private var framingY: Double
-    @State private var dragStart: CGPoint?
+    @State private var dragStartY: Double?
     @State private var showingDeleteConfirmation = false
     @State private var alert: AppAlert?
 
@@ -798,38 +798,26 @@ private struct PointEditor: View {
                                 .contentShape(Rectangle())
                                 .highPriorityGesture(DragGesture(minimumDistance: 0)
                                     .onChanged { value in
-                                        let start = dragStart ?? CGPoint(x: framingX, y: framingY)
-                                        if dragStart == nil { dragStart = start }
-                                        framingX = metrics.overflowX > 0
-                                            ? min(max(Double(start.x - value.translation.width / metrics.overflowX), 0), 1)
-                                            : 0.5
+                                        let start = dragStartY ?? framingY
+                                        if dragStartY == nil { dragStartY = start }
                                         framingY = metrics.overflowY > 0
-                                            ? min(max(Double(start.y - value.translation.height / metrics.overflowY), 0), 1)
+                                            ? min(max(start - Double(value.translation.height / metrics.overflowY), 0), 1)
                                             : 0.5
                                     }
-                                    .onEnded { _ in dragStart = nil })
+                                    .onEnded { _ in dragStartY = nil })
                         }
                         .frame(height: 180)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
-                        .accessibilityLabel("拖动调整照片在卡片中的位置")
-                        Text("拖动照片，或用滑块调整裁切位置")
+                        .accessibilityLabel("上下拖动调整照片在卡片中的位置")
+                        Text("上下拖动照片调整显示位置")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
-                        Slider(value: $framingX, in: 0...1) {
-                            Text("水平位置")
-                        }
-                        Slider(value: $framingY, in: 0...1) {
-                            Text("垂直位置")
-                        }
                         HStack {
                             Text("原图不会修改")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Button("恢复居中") {
-                                framingX = 0.5
-                                framingY = 0.5
-                            }
+                            Button("恢复垂直居中") { framingY = 0.5 }
                             .font(.footnote)
                         }
                     }
