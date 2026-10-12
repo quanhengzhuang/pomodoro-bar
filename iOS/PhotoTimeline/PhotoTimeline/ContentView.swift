@@ -269,15 +269,11 @@ private struct TripDetailView: View {
         return Array(Set(sortedPoints.compactMap { $0.capturedAt.map(calendar.startOfDay(for:)) })).sorted()
     }
     private var hasMissingTimes: Bool { sortedPoints.contains { $0.capturedAt == nil } }
-    private var spansMultipleYears: Bool {
-        guard let first = datedDays.first, let last = datedDays.last else { return false }
-        return Calendar.current.component(.year, from: first) != Calendar.current.component(.year, from: last)
-    }
 
     private static let cardTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "yyyy年M月d日 HH:mm"
+        formatter.dateFormat = "HH:mm"
         return formatter
     }()
 
@@ -463,10 +459,8 @@ private struct TripDetailView: View {
             if let date = point.capturedAt {
                 Text(date.formatted(.dateTime.month(.twoDigits).day(.twoDigits)))
                     .font(.caption.weight(.bold).monospacedDigit())
-                if spansMultipleYears {
-                    Text(date.formatted(.dateTime.year()))
-                        .font(.system(size: 9, weight: .semibold))
-                }
+                Text(date.formatted(.dateTime.year()))
+                    .font(.system(size: 9, weight: .semibold))
             } else {
                 Text("待补录")
                     .font(.system(size: 10, weight: .bold))
@@ -629,7 +623,7 @@ private struct TripDetailView: View {
                         Group {
                             if let time = point.capturedAt {
                                 Text(Self.cardTimeFormatter.string(from: time))
-                                    .foregroundStyle(Palette.ink)
+                                    .foregroundStyle(Palette.blue)
                             } else {
                                 Text("缺少拍摄时间 · 点此补录")
                                     .foregroundStyle(Palette.coral)
@@ -640,6 +634,9 @@ private struct TripDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .layoutPriority(1)
+                    .accessibilityLabel(point.capturedAt.map {
+                        "编辑时间点，\($0.formatted(.dateTime.year().month().day().hour().minute()))"
+                    } ?? "补录拍摄时间")
 
                     if let place = displayPlace(for: point) {
                         Button { openPlaceInMaps(for: point) } label: {
