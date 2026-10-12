@@ -313,12 +313,22 @@ private struct TripDetailView: View {
 
                         if sortedPoints.isEmpty { emptyTimeline }
                         else {
-                            Picker("照片显示", selection: $compactMode) {
-                                Text("大图").tag(false)
-                                Text("小图").tag(true)
+                            HStack {
+                                Spacer()
+                                Button {
+                                    compactMode.toggle()
+                                } label: {
+                                    Label(compactMode ? "大图" : "小图",
+                                          systemImage: compactMode ? "photo" : "square.grid.2x2")
+                                        .font(.subheadline.weight(.semibold))
+                                        .foregroundStyle(Palette.blue)
+                                        .padding(.horizontal, 14)
+                                        .frame(height: 40)
+                                        .background(Palette.mist, in: Capsule())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(compactMode ? "切换为大图" : "切换为小图")
                             }
-                            .pickerStyle(.segmented)
-                            .accessibilityLabel("时间线显示方式")
 
                             if compactMode { compactTimeline }
                             else { timeline }
