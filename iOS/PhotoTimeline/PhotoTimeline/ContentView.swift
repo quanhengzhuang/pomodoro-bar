@@ -419,16 +419,25 @@ private struct TripDetailView: View {
     private var timeline: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(sortedPoints.enumerated()), id: \.element.id) { index, point in
+                let isNewDay = startsNewDay(at: index)
+                let topPadding: CGFloat = isNewDay && index > 0 ? 10 : 0
                 if index > 0, let previous = sortedPoints[index - 1].capturedAt,
                    let current = point.capturedAt {
                     let color = intervalColor(current.timeIntervalSince(previous))
-                    HStack(spacing: 12) {
-                        Rectangle().fill(color.opacity(0.4))
-                            .frame(width: 2, height: 38)
-                            .frame(width: 28)
+                    HStack(spacing: 14) {
+                        Color.clear.frame(width: 28)
                         Text(intervalDescription(from: sortedPoints[index - 1], to: point))
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(color)
+                            .multilineTextAlignment(.center)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .frame(minHeight: 38)
+                    .frame(maxWidth: .infinity)
+                    .background(alignment: .leading) {
+                        Rectangle().fill(color.opacity(0.4))
+                            .frame(width: 2)
+                            .frame(width: 28)
                     }
                 } else if index > 0 {
                     Rectangle().fill(Palette.blue.opacity(0.4))
@@ -436,7 +445,7 @@ private struct TripDetailView: View {
                         .frame(width: 28)
                 }
                 HStack(alignment: .top, spacing: 14) {
-                    if startsNewDay(at: index) {
+                    if isNewDay {
                         dateCircle(for: point)
                     } else {
                         Circle().fill(Palette.blue)
@@ -446,8 +455,19 @@ private struct TripDetailView: View {
                     }
                     pointCard(point)
                 }
-                .id(startsNewDay(at: index) ? sectionID(for: point) : .point(point.id))
-                .padding(.top, startsNewDay(at: index) && index > 0 ? 10 : 0)
+                .padding(.top, topPadding)
+                .background(alignment: .topLeading) {
+                    GeometryReader { proxy in
+                        let lineHeight = index == sortedPoints.count - 1
+                            ? topPadding + (isNewDay ? 26 : 20)
+                            : proxy.size.height
+                        Rectangle().fill(Palette.blue.opacity(0.4))
+                            .frame(width: 2, height: lineHeight)
+                            .position(x: 14, y: lineHeight / 2)
+                    }
+                    .allowsHitTesting(false)
+                }
+                .id(isNewDay ? sectionID(for: point) : .point(point.id))
             }
         }
         .padding(.top, 4)
