@@ -429,7 +429,7 @@ private struct TripDetailView: View {
                     HStack(spacing: 12) {
                         Rectangle().fill(color.opacity(0.4))
                             .frame(width: 2, height: 38)
-                            .frame(width: 62)
+                            .frame(width: 28)
                         Text(intervalDescription(from: sortedPoints[index - 1], to: point))
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(color)
@@ -437,16 +437,16 @@ private struct TripDetailView: View {
                 } else if index > 0 {
                     Rectangle().fill(Palette.blue.opacity(0.4))
                         .frame(width: 2, height: 28)
-                        .frame(width: 62)
+                        .frame(width: 28)
                 }
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: 14) {
                     if startsNewDay(at: index) {
                         dateCircle(for: point)
                     } else {
                         Circle().fill(Palette.blue)
                             .frame(width: 14, height: 14)
                             .overlay(Circle().stroke(Palette.paper, lineWidth: 3))
-                            .frame(width: 62, height: 40)
+                            .frame(width: 28, height: 40)
                     }
                     pointCard(point)
                 }
@@ -473,8 +473,9 @@ private struct TripDetailView: View {
             }
         }
         .foregroundStyle(.white)
-        .frame(width: 62, height: 62)
+        .frame(width: 52, height: 52)
         .background(color, in: Circle())
+        .frame(width: 28, height: 52)
         .accessibilityLabel(point.capturedAt.map {
             $0.formatted(.dateTime.year().month().day().weekday(.wide))
         } ?? "待补录时间")
