@@ -27,6 +27,13 @@ struct ImportResult {
     var missingTimes: Int = 0
 }
 
+private struct DeletedPointBackup: Codable {
+    let tripID: UUID
+    let tripTitle: String
+    let point: PhotoPoint
+    let deletedAt: Date
+}
+
 enum TripStoreError: LocalizedError {
     case noImage
     case invalidImage
@@ -102,6 +109,47 @@ final class TripStore: ObservableObject {
         updated[tripIndex].points[pointIndex].capturedAt = capturedAt
         updated[tripIndex].points[pointIndex].note = note.trimmingCharacters(in: .whitespacesAndNewlines)
         try persist(updated)
+    }
+
+    func deletePoint(tripID: UUID, pointID: UUID) throws {
+        guard loadError == nil else { throw TripStoreError.unreadableLibrary }
+        var updated = trips
+        guard let tripIndex = updated.firstIndex(where: { $0.id == tripID }),
+              let pointIndex = updated[tripIndex].points.firstIndex(where: { $0.id == pointID })
+        else { throw TripStoreError.missingTrip }
+
+        let trip = updated[tripIndex]
+        let point = trip.points[pointIndex]
+        let originalURL = originalsURL.appendingPathComponent(point.originalName)
+        let thumbnailURL = thumbnailsURL.appendingPathComponent(point.thumbnailName)
+        let backupURL = rootURL.appendingPathComponent("Backups/DeletedPoints/\(point.id.uuidString)",
+                                                       isDirectory: true)
+        let backupOriginalsURL = backupURL.appendingPathComponent("Originals", isDirectory: true)
+        let backupThumbnailsURL = backupURL.appendingPathComponent("Thumbnails", isDirectory: true)
+        try FileManager.default.createDirectory(at: backupOriginalsURL, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: backupThumbnailsURL, withIntermediateDirectories: true)
+        let backup = DeletedPointBackup(tripID: trip.id, tripTitle: trip.title,
+                                        point: point, deletedAt: Date())
+        try Self.encoder.encode(backup).write(
+            to: backupURL.appendingPathComponent("point.json"), options: .atomic)
+        let backupManifestURL = backupURL.appendingPathComponent("trips-before-delete.json")
+        if !FileManager.default.fileExists(atPath: backupManifestURL.path) {
+            try FileManager.default.copyItem(at: manifestURL, to: backupManifestURL)
+        }
+        for (source, directory) in [(originalURL, backupOriginalsURL),
+                                     (thumbnailURL, backupThumbnailsURL)] {
+            let destination = directory.appendingPathComponent(source.lastPathComponent)
+            if FileManager.default.fileExists(atPath: source.path),
+               !FileManager.default.fileExists(atPath: destination.path) {
+                try FileManager.default.copyItem(at: source, to: destination)
+            }
+        }
+
+        updated[tripIndex].points.remove(at: pointIndex)
+        try persist(updated)
+        // The backup keeps both images recoverable even if cleanup succeeds.
+        try? FileManager.default.removeItem(at: originalURL)
+        try? FileManager.default.removeItem(at: thumbnailURL)
     }
 
     func importPhotos(_ items: [PhotosPickerItem], into tripID: UUID) async -> ImportResult {

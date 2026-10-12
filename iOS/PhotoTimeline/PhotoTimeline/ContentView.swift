@@ -195,6 +195,7 @@ private struct TripDetailView: View {
     @EnvironmentObject private var store: TripStore
     let tripID: UUID
 
+    @AppStorage("photoTimelineCompactMode") private var compactMode = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var importing = false
     @State private var editingPoint: PhotoPoint?
@@ -253,11 +254,23 @@ private struct TripDetailView: View {
                         .foregroundStyle(.white)
                         .padding(17)
                         .background(Palette.coral, in: RoundedRectangle(cornerRadius: 16))
+                        .contentShape(RoundedRectangle(cornerRadius: 16))
                     }
                     .disabled(importing)
+                    .zIndex(1)
 
                     if sortedPoints.isEmpty { emptyTimeline }
-                    else { timeline }
+                    else {
+                        Picker("照片显示", selection: $compactMode) {
+                            Text("大图").tag(false)
+                            Text("小图").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                        .accessibilityLabel("时间线显示方式")
+
+                        if compactMode { compactTimeline }
+                        else { timeline }
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 18)
@@ -335,25 +348,82 @@ private struct TripDetailView: View {
                         .padding(.top, 13)
                     Button { editingPoint = point } label: { pointCard(point) }
                         .buttonStyle(.plain)
+                        .contentShape(RoundedRectangle(cornerRadius: 18))
                 }
             }
         }
         .padding(.top, 4)
     }
 
+    private var compactTimeline: some View {
+        LazyVStack(spacing: 8) {
+            ForEach(Array(sortedPoints.enumerated()), id: \.element.id) { index, point in
+                Button { editingPoint = point } label: {
+                    HStack(spacing: 12) {
+                        pointThumbnail(point)
+                            .frame(width: 76, height: 76)
+                            .clipped()
+                            .contentShape(Rectangle())
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+                        VStack(alignment: .leading, spacing: 4) {
+                            if let time = point.capturedAt {
+                                Text(time.formatted(.dateTime.month().day().hour().minute()))
+                                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                                    .foregroundStyle(Palette.ink)
+                            } else {
+                                Text("补录拍摄时间")
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Palette.coral)
+                            }
+                            Text(point.note.isEmpty ? "添加地点或备注" : point.note)
+                                .font(.subheadline)
+                                .foregroundStyle(point.note.isEmpty ? Palette.ink.opacity(0.48) : Palette.ink)
+                                .lineLimit(1)
+                            if index > 0, let previous = sortedPoints[index - 1].capturedAt,
+                               let current = point.capturedAt {
+                                Text("距上一站 · \(formatInterval(current.timeIntervalSince(previous)))")
+                                    .font(.caption.weight(.medium).monospacedDigit())
+                                    .foregroundStyle(Palette.blue)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.8)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(Palette.blue.opacity(0.65))
+                    }
+                    .padding(8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.white, in: RoundedRectangle(cornerRadius: 14))
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Palette.mist, lineWidth: 1))
+                    .contentShape(RoundedRectangle(cornerRadius: 14))
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+                .accessibilityHint("打开后可修改时间、备注或删除")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func pointThumbnail(_ point: PhotoPoint) -> some View {
+        if let image = UIImage(contentsOfFile: store.thumbnailURL(for: point).path) {
+            Image(uiImage: image).resizable().scaledToFill()
+        } else {
+            Rectangle().fill(Palette.mist)
+                .overlay(Image(systemName: "photo").foregroundStyle(Palette.blue))
+        }
+    }
+
     private func pointCard(_ point: PhotoPoint) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Group {
-                if let image = UIImage(contentsOfFile: store.thumbnailURL(for: point).path) {
-                    Image(uiImage: image).resizable().scaledToFill()
-                } else {
-                    Rectangle().fill(Palette.mist)
-                        .overlay(Image(systemName: "photo").foregroundStyle(Palette.blue))
-                }
-            }
+            pointThumbnail(point)
             .frame(maxWidth: .infinity)
             .frame(height: 180)
             .clipped()
+            .contentShape(Rectangle())
 
             VStack(alignment: .leading, spacing: 7) {
                 if let time = point.capturedAt {
@@ -384,8 +454,9 @@ private struct TripDetailView: View {
         .background(.white, in: RoundedRectangle(cornerRadius: 18))
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.mist, lineWidth: 1))
+        .contentShape(RoundedRectangle(cornerRadius: 18))
         .accessibilityElement(children: .combine)
-        .accessibilityHint("打开后可修改时间和备注")
+        .accessibilityHint("打开后可修改时间、备注或删除")
     }
 
     private var renameSheet: some View {
@@ -439,6 +510,7 @@ private struct PointEditor: View {
     @State private var note: String
     @State private var hasTime: Bool
     @State private var capturedAt: Date
+    @State private var showingDeleteConfirmation = false
     @State private var alert: AppAlert?
 
     init(tripID: UUID, point: PhotoPoint) {
@@ -479,6 +551,11 @@ private struct PointEditor: View {
                     TextField("例如：到达海边，看了日落", text: $note, axis: .vertical)
                         .lineLimit(3...8)
                 }
+                Section {
+                    Button("从行程删除这张照片", role: .destructive) {
+                        showingDeleteConfirmation = true
+                    }
+                }
             }
             .navigationTitle("编辑时间点")
             .navigationBarTitleDisplayMode(.inline)
@@ -506,6 +583,19 @@ private struct PointEditor: View {
             .alert(item: $alert) { value in
                 Alert(title: Text(value.title), message: Text(value.message),
                       dismissButton: .default(Text("知道了")))
+            }
+            .confirmationDialog("删除这个时间点？", isPresented: $showingDeleteConfirmation,
+                                titleVisibility: .visible) {
+                Button("删除照片", role: .destructive) {
+                    do {
+                        try store.deletePoint(tripID: tripID, pointID: point.id)
+                        dismiss()
+                    } catch {
+                        alert = AppAlert(title: "无法删除", message: error.localizedDescription)
+                    }
+                }
+            } message: {
+                Text("只删除这段行程中的时间点和 App 内的照片副本，系统相册中的原图不会删除。")
             }
         }
     }
