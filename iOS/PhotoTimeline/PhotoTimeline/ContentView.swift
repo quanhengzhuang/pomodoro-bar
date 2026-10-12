@@ -7,6 +7,8 @@ private enum Palette {
     static let mist = Color(red: 0.91, green: 0.95, blue: 0.95)
     static let paper = Color(red: 0.98, green: 0.99, blue: 0.98)
     static let coral = Color(red: 0.96, green: 0.40, blue: 0.30)
+    static let warning = Color(red: 0.58, green: 0.39, blue: 0.05)
+    static let shortInterval = Color(red: 0.16, green: 0.49, blue: 0.32)
 }
 
 private struct AppAlert: Identifiable {
@@ -324,15 +326,21 @@ private struct TripDetailView: View {
     private var timeline: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(sortedPoints.enumerated()), id: \.element.id) { index, point in
+                if startsNewDay(at: index) {
+                    dayDivider(for: point)
+                        .padding(.top, index == 0 ? 0 : 12)
+                        .padding(.bottom, 10)
+                }
                 if index > 0, let previous = sortedPoints[index - 1].capturedAt,
                    let current = point.capturedAt {
+                    let color = intervalColor(current.timeIntervalSince(previous))
                     HStack(spacing: 12) {
-                        Rectangle().fill(Palette.blue.opacity(0.4))
+                        Rectangle().fill(color.opacity(0.4))
                             .frame(width: 2, height: 38)
                             .frame(width: 16)
                         Text("距上一站 · \(formatInterval(current.timeIntervalSince(previous)))")
                             .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(Palette.blue)
+                            .foregroundStyle(color)
                     }
                     .padding(.leading, 6)
                 } else if index > 0 {
@@ -358,6 +366,10 @@ private struct TripDetailView: View {
     private var compactTimeline: some View {
         LazyVStack(spacing: 8) {
             ForEach(Array(sortedPoints.enumerated()), id: \.element.id) { index, point in
+                if startsNewDay(at: index) {
+                    dayDivider(for: point)
+                        .padding(.top, index == 0 ? 0 : 10)
+                }
                 Button { editingPoint = point } label: {
                     HStack(spacing: 12) {
                         pointThumbnail(point)
@@ -384,7 +396,7 @@ private struct TripDetailView: View {
                                let current = point.capturedAt {
                                 Text("距上一站 · \(formatInterval(current.timeIntervalSince(previous)))")
                                     .font(.caption.weight(.medium).monospacedDigit())
-                                    .foregroundStyle(Palette.blue)
+                                    .foregroundStyle(intervalColor(current.timeIntervalSince(previous)))
                                     .lineLimit(1)
                                     .minimumScaleFactor(0.8)
                             }
@@ -405,6 +417,59 @@ private struct TripDetailView: View {
                 .accessibilityHint("打开后可修改时间、备注或删除")
             }
         }
+    }
+
+    private func startsNewDay(at index: Int) -> Bool {
+        guard index > 0 else { return true }
+        switch (sortedPoints[index - 1].capturedAt, sortedPoints[index].capturedAt) {
+        case let (previous?, current?):
+            return !Calendar.current.isDate(previous, inSameDayAs: current)
+        case (nil, nil):
+            return false
+        default:
+            return true
+        }
+    }
+
+    private func dayDivider(for point: PhotoPoint) -> some View {
+        let color = point.capturedAt == nil ? Palette.coral : Palette.blue
+        return HStack(spacing: 9) {
+            Image(systemName: point.capturedAt == nil ? "clock.badge.questionmark" : "calendar")
+                .font(.caption.weight(.bold))
+            if let date = point.capturedAt {
+                Text(date.formatted(.dateTime.year().month().day().weekday(.wide)))
+                    .font(.subheadline.weight(.bold))
+                Spacer(minLength: 4)
+                Text("第\(dayNumber(for: date))天")
+                    .font(.caption.weight(.bold))
+            } else {
+                Text("待补录时间")
+                    .font(.subheadline.weight(.bold))
+                Spacer(minLength: 4)
+            }
+        }
+        .foregroundStyle(color)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+        .accessibilityElement(children: .combine)
+    }
+
+    private func dayNumber(for date: Date) -> Int {
+        let calendar = Calendar.current
+        var days = Set<Date>()
+        for point in sortedPoints {
+            guard let capturedAt = point.capturedAt, capturedAt <= date else { break }
+            days.insert(calendar.startOfDay(for: capturedAt))
+        }
+        return max(days.count, 1)
+    }
+
+    private func intervalColor(_ interval: TimeInterval) -> Color {
+        if interval > 2 * 60 * 60 { return Palette.warning }
+        if interval < 20 * 60 { return Palette.shortInterval }
+        return Palette.blue
     }
 
     @ViewBuilder
