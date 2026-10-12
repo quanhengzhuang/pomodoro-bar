@@ -636,7 +636,6 @@ private struct TripDetailView: View {
                         }
                         .font(.subheadline.weight(.semibold).monospacedDigit())
                         .lineLimit(1)
-                        .minimumScaleFactor(0.8)
                     }
                     .buttonStyle(.plain)
                     .layoutPriority(1)
@@ -644,7 +643,7 @@ private struct TripDetailView: View {
                     if let place = displayPlace(for: point) {
                         Button { openPlaceInMaps(for: point) } label: {
                             Text(place)
-                                .font(.caption)
+                                .font(.subheadline)
                                 .foregroundStyle(Palette.blue)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
