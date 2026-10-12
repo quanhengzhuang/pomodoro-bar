@@ -424,7 +424,7 @@ private struct TripDetailView: View {
                 if index > 0, let previous = sortedPoints[index - 1].capturedAt,
                    let current = point.capturedAt {
                     let color = intervalColor(current.timeIntervalSince(previous))
-                    HStack(spacing: 14) {
+                    HStack(spacing: 24) {
                         Color.clear.frame(width: 28)
                         Text(intervalDescription(from: sortedPoints[index - 1], to: point))
                             .font(.caption.weight(.semibold).monospacedDigit())
@@ -444,7 +444,7 @@ private struct TripDetailView: View {
                         .frame(width: 2, height: 28)
                         .frame(width: 28)
                 }
-                HStack(alignment: .top, spacing: 14) {
+                HStack(alignment: .top, spacing: 24) {
                     if isNewDay {
                         dateCircle(for: point)
                     } else {
@@ -459,7 +459,7 @@ private struct TripDetailView: View {
                 .background(alignment: .topLeading) {
                     GeometryReader { proxy in
                         let lineHeight = index == sortedPoints.count - 1
-                            ? topPadding + (isNewDay ? 26 : 20)
+                            ? topPadding + (isNewDay ? 28 : 20)
                             : proxy.size.height
                         Rectangle().fill(Palette.blue.opacity(0.4))
                             .frame(width: 2, height: lineHeight)
@@ -471,11 +471,12 @@ private struct TripDetailView: View {
             }
         }
         .padding(.top, 4)
+        .padding(.trailing, -10)
     }
 
     private func dateCircle(for point: PhotoPoint) -> some View {
         let color = point.capturedAt == nil ? Palette.coral : Palette.blue
-        return VStack(spacing: 0) {
+        return VStack(spacing: 3) {
             if let date = point.capturedAt {
                 Text(date.formatted(.dateTime.month(.twoDigits).day(.twoDigits)))
                     .font(.caption.weight(.bold).monospacedDigit())
@@ -487,9 +488,9 @@ private struct TripDetailView: View {
             }
         }
         .foregroundStyle(.white)
-        .frame(width: 52, height: 52)
+        .frame(width: 56, height: 56)
         .background(color, in: Circle())
-        .frame(width: 28, height: 52)
+        .frame(width: 28, height: 56)
         .accessibilityLabel(point.capturedAt.map {
             $0.formatted(.dateTime.year().month().day().weekday(.wide))
         } ?? "待补录时间")
