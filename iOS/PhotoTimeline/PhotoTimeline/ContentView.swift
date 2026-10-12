@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import CoreLocation
 
 private enum Palette {
     static let ink = Color(red: 0.08, green: 0.18, blue: 0.23)
@@ -9,6 +10,49 @@ private enum Palette {
     static let coral = Color(red: 0.96, green: 0.40, blue: 0.30)
     static let warning = Color(red: 0.58, green: 0.39, blue: 0.05)
     static let shortInterval = Color(red: 0.16, green: 0.49, blue: 0.32)
+}
+
+private enum TimelineSectionID: Hashable {
+    case day(Date)
+    case missingTime
+}
+
+private struct CropMetrics {
+    let renderedSize: CGSize
+    let overflowX: CGFloat
+    let overflowY: CGFloat
+
+    init(imageSize: CGSize, viewport: CGSize) {
+        let scale = max(viewport.width / max(imageSize.width, 1),
+                        viewport.height / max(imageSize.height, 1))
+        renderedSize = CGSize(width: imageSize.width * scale, height: imageSize.height * scale)
+        overflowX = max(0, renderedSize.width - viewport.width)
+        overflowY = max(0, renderedSize.height - viewport.height)
+    }
+
+    func offset(x: Double, y: Double) -> CGSize {
+        CGSize(width: (0.5 - CGFloat(min(max(x, 0), 1))) * overflowX,
+               height: (0.5 - CGFloat(min(max(y, 0), 1))) * overflowY)
+    }
+}
+
+private struct FramedPhoto: View {
+    let image: UIImage
+    let x: Double
+    let y: Double
+
+    var body: some View {
+        GeometryReader { proxy in
+            let metrics = CropMetrics(imageSize: image.size, viewport: proxy.size)
+            let shift = metrics.offset(x: x, y: y)
+            Image(uiImage: image)
+                .resizable()
+                .frame(width: metrics.renderedSize.width, height: metrics.renderedSize.height)
+                .position(x: proxy.size.width / 2 + shift.width,
+                          y: proxy.size.height / 2 + shift.height)
+        }
+        .clipped()
+    }
 }
 
 private struct AppAlert: Identifiable {
@@ -218,65 +262,93 @@ private struct TripDetailView: View {
             }
         }
     }
+    private var datedDays: [Date] {
+        let calendar = Calendar.current
+        return Array(Set(sortedPoints.compactMap { $0.capturedAt.map(calendar.startOfDay(for:)) })).sorted()
+    }
+    private var hasMissingTimes: Bool { sortedPoints.contains { $0.capturedAt == nil } }
 
     var body: some View {
-        ScrollView {
-            if let trip {
-                VStack(alignment: .leading, spacing: 20) {
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text(trip.title)
-                                .font(.system(size: 32, weight: .bold, design: .serif))
-                                .foregroundStyle(Palette.ink)
-                            Text("\(trip.points.count) 个时间点 · 按拍摄时间排列")
-                                .font(.subheadline)
-                                .foregroundStyle(Palette.ink.opacity(0.65))
-                        }
-                        Spacer()
-                        Button {
-                            renameTitle = trip.title
-                            showingRename = true
-                        } label: {
-                            Image(systemName: "pencil")
-                                .frame(width: 38, height: 38)
-                                .background(Palette.mist, in: Circle())
-                        }
-                        .accessibilityLabel("修改行程名称")
-                    }
-
-                    PhotosPicker(selection: $selectedPhotos, matching: .images,
-                                 preferredItemEncoding: .current) {
-                        HStack {
-                            Image(systemName: "plus")
-                            Text(importing ? "正在导入…" : "添加照片")
+        ScrollViewReader { reader in
+            ScrollView {
+                if let trip {
+                    VStack(alignment: .leading, spacing: 20) {
+                        HStack(alignment: .top, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text(trip.title)
+                                    .font(.system(size: 32, weight: .bold, design: .serif))
+                                    .foregroundStyle(Palette.ink)
+                                Text("\(trip.points.count) 个时间点 · 按拍摄时间排列")
+                                    .font(.subheadline)
+                                    .foregroundStyle(Palette.ink.opacity(0.65))
+                            }
                             Spacer()
-                            Image(systemName: "photo.on.rectangle")
+                            Button {
+                                renameTitle = trip.title
+                                showingRename = true
+                            } label: {
+                                Image(systemName: "pencil")
+                                    .frame(width: 38, height: 38)
+                                    .background(Palette.mist, in: Circle())
+                            }
+                            .accessibilityLabel("修改行程名称")
                         }
-                        .font(.headline)
-                        .foregroundStyle(.white)
-                        .padding(17)
-                        .background(Palette.coral, in: RoundedRectangle(cornerRadius: 16))
-                        .contentShape(RoundedRectangle(cornerRadius: 16))
+
+                        PhotosPicker(selection: $selectedPhotos, matching: .images,
+                                     preferredItemEncoding: .current) {
+                            HStack {
+                                Image(systemName: "plus")
+                                Text(importing ? "正在导入…" : "添加照片")
+                                Spacer()
+                                Image(systemName: "photo.on.rectangle")
+                            }
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .padding(17)
+                            .background(Palette.coral, in: RoundedRectangle(cornerRadius: 16))
+                            .contentShape(RoundedRectangle(cornerRadius: 16))
+                        }
+                        .disabled(importing)
+                        .zIndex(1)
+
+                        if sortedPoints.isEmpty { emptyTimeline }
+                        else {
+                            Picker("照片显示", selection: $compactMode) {
+                                Text("大图").tag(false)
+                                Text("小图").tag(true)
+                            }
+                            .pickerStyle(.segmented)
+                            .accessibilityLabel("时间线显示方式")
+
+                            if compactMode { compactTimeline }
+                            else { timeline }
+                        }
                     }
-                    .disabled(importing)
-                    .zIndex(1)
-
-                    if sortedPoints.isEmpty { emptyTimeline }
-                    else {
-                        Picker("照片显示", selection: $compactMode) {
-                            Text("大图").tag(false)
-                            Text("小图").tag(true)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 18)
+                    .padding(.bottom, 40)
+                }
+            }
+            .toolbar {
+                if !sortedPoints.isEmpty {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Menu {
+                            ForEach(datedDays, id: \.self) { day in
+                                Button(day.formatted(.dateTime.year().month().day().weekday(.abbreviated))) {
+                                    withAnimation { reader.scrollTo(TimelineSectionID.day(day), anchor: .top) }
+                                }
+                            }
+                            if hasMissingTimes {
+                                Button("待补录时间") {
+                                    withAnimation { reader.scrollTo(TimelineSectionID.missingTime, anchor: .top) }
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "calendar")
                         }
-                        .pickerStyle(.segmented)
-                        .accessibilityLabel("时间线显示方式")
-
-                        if compactMode { compactTimeline }
-                        else { timeline }
+                        .accessibilityLabel("跳转日期")
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 18)
-                .padding(.bottom, 40)
             }
         }
         .background(Palette.paper.ignoresSafeArea())
@@ -288,6 +360,7 @@ private struct TripDetailView: View {
                 let result = await store.importPhotos(items, into: tripID)
                 selectedPhotos = []
                 importing = false
+                Task { await store.populateLocations(in: tripID) }
                 if result.failed > 0 || result.missingTimes > 0 {
                     var lines = ["已导入 \(result.imported) 张照片。"]
                     if result.missingTimes > 0 { lines.append("\(result.missingTimes) 张没有拍摄时间，请在时间点中补录。") }
@@ -304,6 +377,7 @@ private struct TripDetailView: View {
             Alert(title: Text(value.title), message: Text(value.message),
                   dismissButton: .default(Text("知道了")))
         }
+        .task { await store.populateLocations(in: tripID) }
     }
 
     private var emptyTimeline: some View {
@@ -330,6 +404,7 @@ private struct TripDetailView: View {
                     dayDivider(for: point)
                         .padding(.top, index == 0 ? 0 : 12)
                         .padding(.bottom, 10)
+                        .id(sectionID(for: point))
                 }
                 if index > 0, let previous = sortedPoints[index - 1].capturedAt,
                    let current = point.capturedAt {
@@ -338,7 +413,7 @@ private struct TripDetailView: View {
                         Rectangle().fill(color.opacity(0.4))
                             .frame(width: 2, height: 38)
                             .frame(width: 16)
-                        Text("距上一站 · \(formatInterval(current.timeIntervalSince(previous)))")
+                        Text(intervalDescription(from: sortedPoints[index - 1], to: point))
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(color)
                     }
@@ -369,11 +444,12 @@ private struct TripDetailView: View {
                 if startsNewDay(at: index) {
                     dayDivider(for: point)
                         .padding(.top, index == 0 ? 0 : 10)
+                        .id(sectionID(for: point))
                 }
                 Button { editingPoint = point } label: {
                     HStack(spacing: 12) {
                         pointThumbnail(point)
-                            .frame(width: 76, height: 76)
+                            .frame(width: 64, height: 64)
                             .clipped()
                             .contentShape(Rectangle())
                             .clipShape(RoundedRectangle(cornerRadius: 10))
@@ -388,17 +464,22 @@ private struct TripDetailView: View {
                                     .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(Palette.coral)
                             }
-                            Text(point.note.isEmpty ? "添加地点或备注" : point.note)
+                            Text(point.note.isEmpty ? "添加备注" : point.note)
                                 .font(.subheadline)
                                 .foregroundStyle(point.note.isEmpty ? Palette.ink.opacity(0.48) : Palette.ink)
                                 .lineLimit(1)
+                            if let place = displayPlace(for: point) {
+                                Label(place, systemImage: "mappin")
+                                    .font(.caption)
+                                    .foregroundStyle(Palette.blue)
+                                    .lineLimit(1)
+                            }
                             if index > 0, let previous = sortedPoints[index - 1].capturedAt,
                                let current = point.capturedAt {
-                                Text("距上一站 · \(formatInterval(current.timeIntervalSince(previous)))")
+                                Text(intervalDescription(from: sortedPoints[index - 1], to: point))
                                     .font(.caption.weight(.medium).monospacedDigit())
                                     .foregroundStyle(intervalColor(current.timeIntervalSince(previous)))
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.8)
+                                    .lineLimit(2)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -429,6 +510,11 @@ private struct TripDetailView: View {
         default:
             return true
         }
+    }
+
+    private func sectionID(for point: PhotoPoint) -> TimelineSectionID {
+        guard let date = point.capturedAt else { return .missingTime }
+        return .day(Calendar.current.startOfDay(for: date))
     }
 
     private func dayDivider(for point: PhotoPoint) -> some View {
@@ -475,7 +561,7 @@ private struct TripDetailView: View {
     @ViewBuilder
     private func pointThumbnail(_ point: PhotoPoint) -> some View {
         if let image = UIImage(contentsOfFile: store.thumbnailURL(for: point).path) {
-            Image(uiImage: image).resizable().scaledToFill()
+            FramedPhoto(image: image, x: point.framingX ?? 0.5, y: point.framingY ?? 0.5)
         } else {
             Rectangle().fill(Palette.mist)
                 .overlay(Image(systemName: "photo").foregroundStyle(Palette.blue))
@@ -503,10 +589,15 @@ private struct TripDetailView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(Palette.coral)
                 }
-                Text(point.note.isEmpty ? "添加地点或备注" : point.note)
+                Text(point.note.isEmpty ? "添加备注" : point.note)
                     .font(.body)
                     .foregroundStyle(point.note.isEmpty ? Palette.ink.opacity(0.48) : Palette.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                if let place = displayPlace(for: point) {
+                    Label(place, systemImage: "mappin")
+                        .font(.subheadline)
+                        .foregroundStyle(Palette.blue)
+                }
                 HStack {
                     Spacer()
                     Image(systemName: "pencil.line")
@@ -564,6 +655,34 @@ private struct TripDetailView: View {
         if seconds > 0 || parts.isEmpty { parts.append("\(seconds)秒") }
         return parts.joined(separator: " ")
     }
+
+    private func intervalDescription(from previous: PhotoPoint, to current: PhotoPoint) -> String {
+        guard let firstTime = previous.capturedAt, let secondTime = current.capturedAt else { return "" }
+        var description = "距上一站 · \(formatInterval(secondTime.timeIntervalSince(firstTime)))"
+        if let distance = distanceBetween(previous, current) {
+            let formatted = distance < 1_000 ? "\(Int(distance.rounded())) 米"
+                : String(format: "%.1f 公里", distance / 1_000)
+            description += " · \(formatted)"
+        }
+        return description
+    }
+
+    private func distanceBetween(_ first: PhotoPoint, _ second: PhotoPoint) -> CLLocationDistance? {
+        guard let firstLatitude = first.latitude, let firstLongitude = first.longitude,
+              let secondLatitude = second.latitude, let secondLongitude = second.longitude else { return nil }
+        let firstCoordinate = CLLocationCoordinate2D(latitude: firstLatitude, longitude: firstLongitude)
+        let secondCoordinate = CLLocationCoordinate2D(latitude: secondLatitude, longitude: secondLongitude)
+        guard CLLocationCoordinate2DIsValid(firstCoordinate),
+              CLLocationCoordinate2DIsValid(secondCoordinate) else { return nil }
+        return CLLocation(latitude: firstLatitude, longitude: firstLongitude)
+            .distance(from: CLLocation(latitude: secondLatitude, longitude: secondLongitude))
+    }
+
+    private func displayPlace(for point: PhotoPoint) -> String? {
+        if let name = point.placeName, !name.isEmpty { return name }
+        guard let latitude = point.latitude, let longitude = point.longitude else { return nil }
+        return String(format: "%.4f, %.4f", latitude, longitude)
+    }
 }
 
 private struct PointEditor: View {
@@ -573,8 +692,13 @@ private struct PointEditor: View {
     let point: PhotoPoint
 
     @State private var note: String
+    @State private var placeName: String
+    @State private var placeEdited = false
     @State private var hasTime: Bool
     @State private var capturedAt: Date
+    @State private var framingX: Double
+    @State private var framingY: Double
+    @State private var dragStart: CGPoint?
     @State private var showingDeleteConfirmation = false
     @State private var alert: AppAlert?
 
@@ -582,7 +706,10 @@ private struct PointEditor: View {
         self.tripID = tripID
         self.point = point
         _note = State(initialValue: point.note)
+        _placeName = State(initialValue: point.placeName ?? "")
         _hasTime = State(initialValue: point.capturedAt != nil)
+        _framingX = State(initialValue: point.framingX ?? 0.5)
+        _framingY = State(initialValue: point.framingY ?? 0.5)
         _capturedAt = State(initialValue: point.capturedAt
             ?? Calendar.current.dateInterval(of: .minute, for: Date())?.start
             ?? Date())
@@ -591,14 +718,48 @@ private struct PointEditor: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("照片") {
+                Section("照片显示位置") {
                     if let image = UIImage(contentsOfFile: store.thumbnailURL(for: point).path) {
-                        Image(uiImage: image)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: .infinity)
-                            .frame(maxHeight: 260)
-                            .accessibilityLabel("时间点照片")
+                        GeometryReader { proxy in
+                            let metrics = CropMetrics(imageSize: image.size, viewport: proxy.size)
+                            FramedPhoto(image: image, x: framingX, y: framingY)
+                                .contentShape(Rectangle())
+                                .highPriorityGesture(DragGesture(minimumDistance: 0)
+                                    .onChanged { value in
+                                        let start = dragStart ?? CGPoint(x: framingX, y: framingY)
+                                        if dragStart == nil { dragStart = start }
+                                        framingX = metrics.overflowX > 0
+                                            ? min(max(Double(start.x - value.translation.width / metrics.overflowX), 0), 1)
+                                            : 0.5
+                                        framingY = metrics.overflowY > 0
+                                            ? min(max(Double(start.y - value.translation.height / metrics.overflowY), 0), 1)
+                                            : 0.5
+                                    }
+                                    .onEnded { _ in dragStart = nil })
+                        }
+                        .frame(height: 180)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .accessibilityLabel("拖动调整照片在卡片中的位置")
+                        Text("拖动照片，或用滑块调整裁切位置")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                        Slider(value: $framingX, in: 0...1) {
+                            Text("水平位置")
+                        }
+                        Slider(value: $framingY, in: 0...1) {
+                            Text("垂直位置")
+                        }
+                        HStack {
+                            Text("原图不会修改")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Button("恢复居中") {
+                                framingX = 0.5
+                                framingY = 0.5
+                            }
+                            .font(.footnote)
+                        }
                     }
                 }
                 Section("拍摄时间") {
@@ -613,6 +774,13 @@ private struct PointEditor: View {
                     }
                 }
                 Section("地点或备注") {
+                    TextField("拍摄地点", text: $placeName)
+                        .onChange(of: placeName) { _ in placeEdited = true }
+                    if let latitude = point.latitude, let longitude = point.longitude {
+                        Text(String(format: "GPS：%.4f, %.4f", latitude, longitude))
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     TextField("例如：到达海边，看了日落", text: $note, axis: .vertical)
                         .lineLimit(3...8)
                 }
@@ -637,7 +805,9 @@ private struct PointEditor: View {
                                 chosenTime = nil
                             }
                             try store.updatePoint(tripID: tripID, pointID: point.id,
-                                                  capturedAt: chosenTime, note: note)
+                                                  capturedAt: chosenTime, note: note,
+                                                  framingX: framingX, framingY: framingY,
+                                                  placeName: placeEdited ? placeName : nil)
                             dismiss()
                         } catch {
                             alert = AppAlert(title: "无法保存", message: error.localizedDescription)

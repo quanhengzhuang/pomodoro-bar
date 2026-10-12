@@ -1,4 +1,5 @@
 import Foundation
+import CoreLocation
 import ImageIO
 import PhotosUI
 import SwiftUI
@@ -19,6 +20,11 @@ struct PhotoPoint: Codable, Identifiable {
     var capturedAt: Date?
     var note: String
     var addedAt: Date
+    var framingX: Double? = nil
+    var framingY: Double? = nil
+    var latitude: Double? = nil
+    var longitude: Double? = nil
+    var placeName: String? = nil
 }
 
 struct ImportResult {
@@ -54,6 +60,8 @@ enum TripStoreError: LocalizedError {
 final class TripStore: ObservableObject {
     @Published private(set) var trips: [Trip] = []
     @Published private(set) var loadError: String?
+    private var locatingTrips: Set<UUID> = []
+    private var needsLocationRefresh: Set<UUID> = []
 
     private let rootURL: URL
     private let originalsURL: URL
@@ -101,14 +109,82 @@ final class TripStore: ObservableObject {
         try persist(updated)
     }
 
-    func updatePoint(tripID: UUID, pointID: UUID, capturedAt: Date?, note: String) throws {
+    func updatePoint(tripID: UUID, pointID: UUID, capturedAt: Date?, note: String,
+                     framingX: Double, framingY: Double, placeName: String?) throws {
         var updated = trips
         guard let tripIndex = updated.firstIndex(where: { $0.id == tripID }),
               let pointIndex = updated[tripIndex].points.firstIndex(where: { $0.id == pointID })
         else { throw TripStoreError.missingTrip }
         updated[tripIndex].points[pointIndex].capturedAt = capturedAt
         updated[tripIndex].points[pointIndex].note = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated[tripIndex].points[pointIndex].framingX = min(max(framingX, 0), 1)
+        updated[tripIndex].points[pointIndex].framingY = min(max(framingY, 0), 1)
+        if let placeName {
+            updated[tripIndex].points[pointIndex].placeName = placeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         try persist(updated)
+    }
+
+    func populateLocations(in tripID: UUID) async {
+        guard loadError == nil, trip(id: tripID) != nil else { return }
+        if locatingTrips.contains(tripID) {
+            needsLocationRefresh.insert(tripID)
+            return
+        }
+        locatingTrips.insert(tripID)
+        defer { locatingTrips.remove(tripID) }
+
+        let geocoder = CLGeocoder()
+        var queued = trip(id: tripID)?.points.map(\.id) ?? []
+        while !queued.isEmpty && !Task.isCancelled {
+            let pointID = queued.removeFirst()
+            guard !Task.isCancelled,
+                  let point = trip(id: tripID)?.points.first(where: { $0.id == pointID }) else { continue }
+
+            if point.latitude == nil || point.longitude == nil,
+               let coordinate = PhotoMetadata.readGPS(from: originalsURL.appendingPathComponent(point.originalName)) {
+                try? updateLocation(tripID: tripID, pointID: pointID, coordinate: coordinate)
+            }
+
+            if let current = trip(id: tripID)?.points.first(where: { $0.id == pointID }),
+               current.placeName == nil,
+               let latitude = current.latitude, let longitude = current.longitude {
+                let location = CLLocation(latitude: latitude, longitude: longitude)
+                if let placemark = try? await geocoder.reverseGeocodeLocation(
+                    location, preferredLocale: Locale(identifier: "zh_CN")).first,
+                   let name = Self.placeName(from: placemark) {
+                    try? updateLocation(tripID: tripID, pointID: pointID, placeName: name)
+                }
+            }
+            if queued.isEmpty, needsLocationRefresh.remove(tripID) != nil {
+                queued = trip(id: tripID)?.points.map(\.id) ?? []
+            }
+        }
+    }
+
+    private func updateLocation(tripID: UUID, pointID: UUID,
+                                coordinate: CLLocationCoordinate2D? = nil,
+                                placeName: String? = nil) throws {
+        var updated = trips
+        guard let tripIndex = updated.firstIndex(where: { $0.id == tripID }),
+              let pointIndex = updated[tripIndex].points.firstIndex(where: { $0.id == pointID })
+        else { throw TripStoreError.missingTrip }
+        if let coordinate {
+            updated[tripIndex].points[pointIndex].latitude = coordinate.latitude
+            updated[tripIndex].points[pointIndex].longitude = coordinate.longitude
+        }
+        if let placeName, updated[tripIndex].points[pointIndex].placeName == nil {
+            updated[tripIndex].points[pointIndex].placeName = placeName
+        }
+        try persist(updated)
+    }
+
+    private static func placeName(from placemark: CLPlacemark) -> String? {
+        let parts = [placemark.locality ?? placemark.administrativeArea,
+                     placemark.subLocality]
+            .compactMap { $0 }
+            .filter { !$0.isEmpty }
+        return parts.isEmpty ? placemark.name : parts.joined(separator: " · ")
     }
 
     func deletePoint(tripID: UUID, pointID: UUID) throws {
@@ -172,9 +248,12 @@ final class TripStore: ObservableObject {
                     guard let index = updated.firstIndex(where: { $0.id == tripID }) else {
                         throw TripStoreError.missingTrip
                     }
-                    updated[index].points.append(PhotoPoint(id: id, originalName: originalName,
+                    var point = PhotoPoint(id: id, originalName: originalName,
                         thumbnailName: thumbnailName, capturedAt: image.capturedAt,
-                        note: "", addedAt: Date()))
+                        note: "", addedAt: Date())
+                    point.latitude = image.coordinate?.latitude
+                    point.longitude = image.coordinate?.longitude
+                    updated[index].points.append(point)
                     try persist(updated)
                     result.imported += 1
                     if image.capturedAt == nil { result.missingTimes += 1 }
@@ -214,6 +293,7 @@ final class TripStore: ObservableObject {
 private enum PhotoMetadata {
     struct ImageInfo {
         let capturedAt: Date?
+        let coordinate: CLLocationCoordinate2D?
         let fileExtension: String
         let thumbnail: Data
     }
@@ -240,7 +320,26 @@ private enum PhotoMetadata {
         let offset = (exif?[kCGImagePropertyExifOffsetTimeOriginal] as? String)
             ?? (exif?[kCGImagePropertyExifOffsetTimeDigitized] as? String)
         return ImageInfo(capturedAt: parseDate(timestamp, offset: offset),
+                         coordinate: gpsCoordinate(in: properties),
                          fileExtension: fileExtension, thumbnail: thumbnail)
+    }
+
+    static func readGPS(from url: URL) -> CLLocationCoordinate2D? {
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        else { return nil }
+        return gpsCoordinate(in: properties)
+    }
+
+    private static func gpsCoordinate(in properties: [CFString: Any]?) -> CLLocationCoordinate2D? {
+        guard let gps = properties?[kCGImagePropertyGPSDictionary] as? [CFString: Any],
+              let rawLatitude = gps[kCGImagePropertyGPSLatitude] as? Double,
+              let rawLongitude = gps[kCGImagePropertyGPSLongitude] as? Double else { return nil }
+        let latitude = (gps[kCGImagePropertyGPSLatitudeRef] as? String) == "S" ? -rawLatitude : rawLatitude
+        let longitude = (gps[kCGImagePropertyGPSLongitudeRef] as? String) == "W" ? -rawLongitude : rawLongitude
+        guard latitude.isFinite, longitude.isFinite,
+              (-90...90).contains(latitude), (-180...180).contains(longitude) else { return nil }
+        return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
     private static func parseDate(_ timestamp: String?, offset: String?) -> Date? {
