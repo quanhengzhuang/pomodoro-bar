@@ -420,7 +420,11 @@ private struct TripDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(sortedPoints.enumerated()), id: \.element.id) { index, point in
                 let isNewDay = startsNewDay(at: index)
+                let isNewYear = startsNewYear(at: index)
                 let topPadding: CGFloat = isNewDay && index > 0 ? 10 : 0
+                if isNewYear, let date = point.capturedAt {
+                    yearDivider(for: date)
+                }
                 if index > 0, let previous = sortedPoints[index - 1].capturedAt,
                    let current = point.capturedAt {
                     let color = intervalColor(current.timeIntervalSince(previous))
@@ -458,12 +462,15 @@ private struct TripDetailView: View {
                 .padding(.top, topPadding)
                 .background(alignment: .topLeading) {
                     GeometryReader { proxy in
-                        let lineHeight = index == sortedPoints.count - 1
-                            ? topPadding + (isNewDay ? 28 : 20)
-                            : proxy.size.height
-                        Rectangle().fill(Palette.accent.opacity(0.4))
-                            .frame(width: 2, height: lineHeight)
-                            .position(x: 14, y: lineHeight / 2)
+                        let markerBottom = topPadding + (isNewDay ? 56.0 : 27.0)
+                        let lineStart = markerBottom + 8
+                        if index + 1 < sortedPoints.count,
+                           !startsNewYear(at: index + 1),
+                           proxy.size.height > lineStart {
+                            Rectangle().fill(Palette.accent.opacity(0.4))
+                                .frame(width: 2, height: proxy.size.height - lineStart)
+                                .position(x: 14, y: (lineStart + proxy.size.height) / 2)
+                        }
                     }
                     .allowsHitTesting(false)
                 }
@@ -476,12 +483,10 @@ private struct TripDetailView: View {
 
     private func dateCircle(for point: PhotoPoint) -> some View {
         let color = point.capturedAt == nil ? Palette.action : Palette.accent
-        return VStack(spacing: 3) {
+        return VStack(spacing: 0) {
             if let date = point.capturedAt {
                 Text(date.formatted(.dateTime.month(.twoDigits).day(.twoDigits)))
                     .font(.caption.weight(.bold).monospacedDigit())
-                Text(date.formatted(.dateTime.year()))
-                    .font(.system(size: 9, weight: .semibold))
             } else {
                 Text("待补录")
                     .font(.system(size: 10, weight: .bold))
@@ -494,6 +499,19 @@ private struct TripDetailView: View {
         .accessibilityLabel(point.capturedAt.map {
             $0.formatted(.dateTime.year().month().day().weekday(.wide))
         } ?? "待补录时间")
+    }
+
+    private func yearDivider(for date: Date) -> some View {
+        HStack(spacing: 12) {
+            Rectangle().fill(Palette.accent.opacity(0.3)).frame(height: 1)
+            Text(date.formatted(.dateTime.year()))
+                .font(.subheadline.weight(.bold).monospacedDigit())
+                .foregroundStyle(Palette.accent)
+                .fixedSize()
+            Rectangle().fill(Palette.accent.opacity(0.3)).frame(height: 1)
+        }
+        .padding(.vertical, 12)
+        .accessibilityLabel("\(date.formatted(.dateTime.year()))年")
     }
 
     private var compactTimeline: some View {
@@ -568,6 +586,12 @@ private struct TripDetailView: View {
         default:
             return true
         }
+    }
+
+    private func startsNewYear(at index: Int) -> Bool {
+        guard let current = sortedPoints[index].capturedAt else { return false }
+        guard index > 0, let previous = sortedPoints[index - 1].capturedAt else { return true }
+        return !Calendar.current.isDate(previous, equalTo: current, toGranularity: .year)
     }
 
     private func sectionID(for point: PhotoPoint) -> TimelineSectionID {
@@ -748,7 +772,7 @@ private struct TripDetailView: View {
 
     private func intervalDescription(from previous: PhotoPoint, to current: PhotoPoint) -> String {
         guard let firstTime = previous.capturedAt, let secondTime = current.capturedAt else { return "" }
-        var description = "距上一站 · \(formatInterval(secondTime.timeIntervalSince(firstTime)))"
+        var description = formatInterval(secondTime.timeIntervalSince(firstTime))
         if let distance = distanceBetween(previous, current) {
             let formatted = distance < 1_000 ? "\(Int(distance.rounded())) 米"
                 : String(format: "%.1f 公里", distance / 1_000)
