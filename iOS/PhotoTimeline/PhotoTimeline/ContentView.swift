@@ -269,15 +269,10 @@ private struct TripDetailView: View {
         return Array(Set(sortedPoints.compactMap { $0.capturedAt.map(calendar.startOfDay(for:)) })).sorted()
     }
     private var hasMissingTimes: Bool { sortedPoints.contains { $0.capturedAt == nil } }
-    private var spansMultipleYears: Bool {
-        guard let first = datedDays.first, let last = datedDays.last else { return false }
-        return Calendar.current.component(.year, from: first) != Calendar.current.component(.year, from: last)
-    }
-
     private static let cardTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
-        formatter.dateFormat = "yyyy年M月d日 HH:mm"
+        formatter.dateFormat = "HH:mm"
         return formatter
     }()
 
@@ -426,27 +421,29 @@ private struct TripDetailView: View {
                 if index > 0, let previous = sortedPoints[index - 1].capturedAt,
                    let current = point.capturedAt {
                     let color = intervalColor(current.timeIntervalSince(previous))
-                    HStack(spacing: 12) {
-                        Rectangle().fill(color.opacity(0.4))
-                            .frame(width: 2, height: 38)
-                            .frame(width: 62)
-                        Text(intervalDescription(from: sortedPoints[index - 1], to: point))
-                            .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(color)
-                    }
+                    Text(intervalDescription(from: sortedPoints[index - 1], to: point))
+                        .font(.caption.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(color)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity, minHeight: 38)
+                        .background(alignment: .leading) {
+                            Rectangle().fill(color.opacity(0.4))
+                                .frame(width: 2, height: 30)
+                                .frame(width: 50, height: 38, alignment: .top)
+                        }
                 } else if index > 0 {
                     Rectangle().fill(Palette.blue.opacity(0.4))
-                        .frame(width: 2, height: 28)
-                        .frame(width: 62)
+                        .frame(width: 2, height: 20)
+                        .frame(width: 50, height: 28, alignment: .top)
                 }
-                HStack(alignment: .top, spacing: 12) {
+                HStack(alignment: .top, spacing: 18) {
                     if startsNewDay(at: index) {
                         dateCircle(for: point)
                     } else {
                         Circle().fill(Palette.blue)
                             .frame(width: 14, height: 14)
                             .overlay(Circle().stroke(Palette.paper, lineWidth: 3))
-                            .frame(width: 62, height: 40)
+                            .frame(width: 50, height: 40)
                     }
                     pointCard(point)
                 }
@@ -455,26 +452,27 @@ private struct TripDetailView: View {
             }
         }
         .padding(.top, 4)
+        .padding(.leading, -4)
+        .padding(.trailing, -10)
     }
 
     private func dateCircle(for point: PhotoPoint) -> some View {
         let color = point.capturedAt == nil ? Palette.coral : Palette.blue
-        return VStack(spacing: 0) {
+        return VStack(spacing: 2) {
             if let date = point.capturedAt {
+                Text(date.formatted(.dateTime.year()))
+                    .font(.system(size: 11, weight: .bold).monospacedDigit())
                 Text(date.formatted(.dateTime.month(.twoDigits).day(.twoDigits)))
                     .font(.caption.weight(.bold).monospacedDigit())
-                if spansMultipleYears {
-                    Text(date.formatted(.dateTime.year()))
-                        .font(.system(size: 9, weight: .semibold))
-                }
             } else {
                 Text("待补录")
                     .font(.system(size: 10, weight: .bold))
             }
         }
         .foregroundStyle(.white)
-        .frame(width: 62, height: 62)
+        .frame(width: 68, height: 68)
         .background(color, in: Circle())
+        .frame(width: 50, height: 68)
         .accessibilityLabel(point.capturedAt.map {
             $0.formatted(.dateTime.year().month().day().weekday(.wide))
         } ?? "待补录时间")
@@ -499,8 +497,8 @@ private struct TripDetailView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             if let time = point.capturedAt {
                                 Text(time.formatted(.dateTime.month().day().hour().minute()))
-                                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                                    .foregroundStyle(Palette.ink)
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Palette.blue)
                             } else {
                                 Text("补录拍摄时间")
                                     .font(.subheadline.weight(.semibold))
@@ -512,7 +510,7 @@ private struct TripDetailView: View {
                                 .lineLimit(1)
                             if let place = displayPlace(for: point) {
                                 Label(place, systemImage: "mappin")
-                                    .font(.caption)
+                                    .font(.subheadline.weight(.semibold))
                                     .foregroundStyle(Palette.blue)
                                     .lineLimit(1)
                             }
@@ -614,7 +612,7 @@ private struct TripDetailView: View {
         VStack(alignment: .leading, spacing: 0) {
             Button { editingPoint = point } label: {
                 pointThumbnail(point)
-                    .frame(height: 180)
+                    .aspectRatio(1.8, contentMode: .fit)
                     .frame(maxWidth: .infinity)
                     .clipped()
                     .contentShape(Rectangle())
@@ -628,13 +626,13 @@ private struct TripDetailView: View {
                         Group {
                             if let time = point.capturedAt {
                                 Text(Self.cardTimeFormatter.string(from: time))
-                                    .foregroundStyle(Palette.ink)
+                                    .foregroundStyle(Palette.blue)
                             } else {
                                 Text("缺少拍摄时间 · 点此补录")
                                     .foregroundStyle(Palette.coral)
                             }
                         }
-                        .font(.subheadline.weight(.semibold).monospacedDigit())
+                        .font(.subheadline.weight(.semibold))
                         .lineLimit(1)
                     }
                     .buttonStyle(.plain)
@@ -643,7 +641,7 @@ private struct TripDetailView: View {
                     if let place = displayPlace(for: point) {
                         Button { openPlaceInMaps(for: point) } label: {
                             Text(place)
-                                .font(.subheadline)
+                                .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(Palette.blue)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -655,7 +653,7 @@ private struct TripDetailView: View {
                 if !point.note.isEmpty {
                     Button { editingPoint = point } label: {
                         Text(point.note)
-                            .font(.body)
+                            .font(.title3)
                             .foregroundStyle(Palette.ink)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
@@ -729,7 +727,7 @@ private struct TripDetailView: View {
 
     private func intervalDescription(from previous: PhotoPoint, to current: PhotoPoint) -> String {
         guard let firstTime = previous.capturedAt, let secondTime = current.capturedAt else { return "" }
-        var description = "距上一站 · \(formatInterval(secondTime.timeIntervalSince(firstTime)))"
+        var description = formatInterval(secondTime.timeIntervalSince(firstTime))
         if let distance = distanceBetween(previous, current) {
             let formatted = distance < 1_000 ? "\(Int(distance.rounded())) 米"
                 : String(format: "%.1f 公里", distance / 1_000)
