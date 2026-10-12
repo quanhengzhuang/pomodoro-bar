@@ -15,6 +15,7 @@ private enum Palette {
 private enum TimelineSectionID: Hashable {
     case day(Date)
     case missingTime
+    case point(UUID)
 }
 
 private struct CropMetrics {
@@ -239,6 +240,7 @@ struct ContentView: View {
 
 private struct TripDetailView: View {
     @EnvironmentObject private var store: TripStore
+    @Environment(\.openURL) private var openURL
     let tripID: UUID
 
     @AppStorage("photoTimelineCompactMode") private var compactMode = false
@@ -267,6 +269,17 @@ private struct TripDetailView: View {
         return Array(Set(sortedPoints.compactMap { $0.capturedAt.map(calendar.startOfDay(for:)) })).sorted()
     }
     private var hasMissingTimes: Bool { sortedPoints.contains { $0.capturedAt == nil } }
+    private var spansMultipleYears: Bool {
+        guard let first = datedDays.first, let last = datedDays.last else { return false }
+        return Calendar.current.component(.year, from: first) != Calendar.current.component(.year, from: last)
+    }
+
+    private static let cardTimeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "zh_CN")
+        formatter.dateFormat = "yyyy年M月d日 HH:mm"
+        return formatter
+    }()
 
     var body: some View {
         ScrollViewReader { reader in
@@ -410,42 +423,61 @@ private struct TripDetailView: View {
     private var timeline: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(sortedPoints.enumerated()), id: \.element.id) { index, point in
-                if startsNewDay(at: index) {
-                    dayDivider(for: point)
-                        .padding(.top, index == 0 ? 0 : 12)
-                        .padding(.bottom, 10)
-                        .id(sectionID(for: point))
-                }
                 if index > 0, let previous = sortedPoints[index - 1].capturedAt,
                    let current = point.capturedAt {
                     let color = intervalColor(current.timeIntervalSince(previous))
                     HStack(spacing: 12) {
                         Rectangle().fill(color.opacity(0.4))
                             .frame(width: 2, height: 38)
-                            .frame(width: 16)
+                            .frame(width: 62)
                         Text(intervalDescription(from: sortedPoints[index - 1], to: point))
                             .font(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(color)
                     }
-                    .padding(.leading, 6)
                 } else if index > 0 {
                     Rectangle().fill(Palette.blue.opacity(0.4))
                         .frame(width: 2, height: 28)
-                        .padding(.leading, 13)
+                        .frame(width: 62)
                 }
-                HStack(alignment: .top, spacing: 14) {
-                    Circle().fill(point.capturedAt == nil ? Palette.coral : Palette.blue)
-                        .frame(width: 14, height: 14)
-                        .overlay(Circle().stroke(Palette.paper, lineWidth: 3))
-                        .frame(width: 28)
-                        .padding(.top, 13)
-                    Button { editingPoint = point } label: { pointCard(point) }
-                        .buttonStyle(.plain)
-                        .contentShape(RoundedRectangle(cornerRadius: 18))
+                HStack(alignment: .top, spacing: 12) {
+                    if startsNewDay(at: index) {
+                        dateCircle(for: point)
+                    } else {
+                        Circle().fill(Palette.blue)
+                            .frame(width: 14, height: 14)
+                            .overlay(Circle().stroke(Palette.paper, lineWidth: 3))
+                            .frame(width: 62, height: 40)
+                    }
+                    pointCard(point)
                 }
+                .id(startsNewDay(at: index) ? sectionID(for: point) : .point(point.id))
+                .padding(.top, startsNewDay(at: index) && index > 0 ? 10 : 0)
             }
         }
         .padding(.top, 4)
+    }
+
+    private func dateCircle(for point: PhotoPoint) -> some View {
+        let color = point.capturedAt == nil ? Palette.coral : Palette.blue
+        return VStack(spacing: 0) {
+            if let date = point.capturedAt {
+                Text(date.formatted(.dateTime.month(.twoDigits).day(.twoDigits)))
+                    .font(.caption.weight(.bold).monospacedDigit())
+                if spansMultipleYears {
+                    Text(date.formatted(.dateTime.year()))
+                        .font(.system(size: 9, weight: .semibold))
+                }
+            } else {
+                Text("待补录")
+                    .font(.system(size: 10, weight: .bold))
+            }
+        }
+        .foregroundStyle(.white)
+        .frame(width: 62, height: 62)
+        .background(color, in: Circle())
+        .accessibilityLabel(point.capturedAt.map {
+            $0.formatted(.dateTime.year().month().day().weekday(.wide))
+        } ?? "待补录时间")
     }
 
     private var compactTimeline: some View {
@@ -580,49 +612,79 @@ private struct TripDetailView: View {
 
     private func pointCard(_ point: PhotoPoint) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            pointThumbnail(point)
-            .frame(maxWidth: .infinity)
-            .frame(height: 180)
-            .clipped()
-            .contentShape(Rectangle())
+            Button { editingPoint = point } label: {
+                pointThumbnail(point)
+                    .frame(height: 180)
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("编辑照片时间点")
 
-            VStack(alignment: .leading, spacing: 7) {
-                if let time = point.capturedAt {
-                    Text(time.formatted(.dateTime.year().month().day().weekday(.abbreviated)))
-                        .font(.caption)
-                        .foregroundStyle(Palette.blue)
-                    Text(time.formatted(date: .omitted, time: .standard))
-                        .font(.system(size: 23, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(Palette.ink)
-                } else {
-                    Text("缺少拍摄时间 · 点此补录")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Palette.coral)
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Button { editingPoint = point } label: {
+                        Group {
+                            if let time = point.capturedAt {
+                                Text(Self.cardTimeFormatter.string(from: time))
+                                    .foregroundStyle(Palette.ink)
+                            } else {
+                                Text("缺少拍摄时间 · 点此补录")
+                                    .foregroundStyle(Palette.coral)
+                            }
+                        }
+                        .font(.subheadline.weight(.semibold).monospacedDigit())
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                    }
+                    .buttonStyle(.plain)
+                    .layoutPriority(1)
+
+                    if let place = displayPlace(for: point) {
+                        Button { openPlaceInMaps(for: point) } label: {
+                            Text(place)
+                                .font(.caption)
+                                .foregroundStyle(Palette.blue)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("在地图中查看\(place)")
+                    }
                 }
-                Text(point.note.isEmpty ? "添加备注" : point.note)
-                    .font(.body)
-                    .foregroundStyle(point.note.isEmpty ? Palette.ink.opacity(0.48) : Palette.ink)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if let place = displayPlace(for: point) {
-                    Label(place, systemImage: "mappin")
-                        .font(.subheadline)
-                        .foregroundStyle(Palette.blue)
-                }
-                HStack {
-                    Spacer()
-                    Image(systemName: "pencil.line")
-                        .font(.caption)
-                        .foregroundStyle(Palette.blue)
+                if !point.note.isEmpty {
+                    Button { editingPoint = point } label: {
+                        Text(point.note)
+                            .font(.body)
+                            .foregroundStyle(Palette.ink)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
-            .padding(15)
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(.white, in: RoundedRectangle(cornerRadius: 18))
         .clipShape(RoundedRectangle(cornerRadius: 18))
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.mist, lineWidth: 1))
         .contentShape(RoundedRectangle(cornerRadius: 18))
-        .accessibilityElement(children: .combine)
-        .accessibilityHint("打开后可修改时间、备注或删除")
+    }
+
+    private func openPlaceInMaps(for point: PhotoPoint) {
+        var url = URLComponents()
+        url.scheme = "https"
+        url.host = "maps.apple.com"
+        var query = [URLQueryItem(name: "q", value: displayPlace(for: point))]
+        if let latitude = point.latitude, let longitude = point.longitude {
+            let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+            if CLLocationCoordinate2DIsValid(coordinate) {
+                query.append(URLQueryItem(name: "ll", value: "\(latitude),\(longitude)"))
+            }
+        }
+        url.queryItems = query
+        if let destination = url.url { openURL(destination) }
     }
 
     private var renameSheet: some View {
