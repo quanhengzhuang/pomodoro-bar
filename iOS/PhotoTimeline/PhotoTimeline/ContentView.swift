@@ -8,8 +8,6 @@ private enum Palette {
     static let mist = Color(red: 0.91, green: 0.95, blue: 0.95)
     static let paper = Color(red: 0.98, green: 0.99, blue: 0.98)
     static let coral = Color(red: 0.96, green: 0.40, blue: 0.30)
-    static let warning = Color(red: 0.58, green: 0.39, blue: 0.05)
-    static let shortInterval = Color(red: 0.16, green: 0.49, blue: 0.32)
 }
 
 private enum TimelineSectionID: Hashable {
@@ -110,7 +108,7 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("旅途留影")
-                    .font(.system(size: 34, weight: .bold, design: .serif))
+                    .font(.system(size: 34, weight: .bold))
                     .foregroundStyle(Palette.ink)
                 Spacer()
                 Button {
@@ -145,7 +143,7 @@ struct ContentView: View {
                 .font(.system(size: 42, weight: .light))
                 .foregroundStyle(Palette.blue)
             Text("先创建一段行程")
-                .font(.system(size: 25, weight: .semibold, design: .serif))
+                .font(.system(size: 25, weight: .semibold))
                 .foregroundStyle(Palette.ink)
             Text("比如“周末去海边”。之后可以一次选入多张照片，时间线会按拍摄时间排好。")
                 .font(.body)
@@ -284,7 +282,7 @@ private struct TripDetailView: View {
                         HStack(alignment: .top, spacing: 12) {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text(trip.title)
-                                    .font(.system(size: 32, weight: .bold, design: .serif))
+                                    .font(.system(size: 32, weight: .bold))
                                     .foregroundStyle(Palette.ink)
                                 Text("\(trip.points.count) 个时间点 · 按拍摄时间排列")
                                     .font(.subheadline)
@@ -418,20 +416,19 @@ private struct TripDetailView: View {
     private var timeline: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(sortedPoints.enumerated()), id: \.element.id) { index, point in
-                if index > 0, let previous = sortedPoints[index - 1].capturedAt,
-                   let current = point.capturedAt {
-                    let color = intervalColor(current.timeIntervalSince(previous))
+                if index > 0, sortedPoints[index - 1].capturedAt != nil,
+                   point.capturedAt != nil {
                     HStack(spacing: 18) {
                         Color.clear.frame(width: 50)
                         Text(intervalDescription(from: sortedPoints[index - 1], to: point))
                             .font(.caption.weight(.semibold).monospacedDigit())
-                            .foregroundStyle(color)
+                            .foregroundStyle(Palette.blue)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
                     }
                     .frame(maxWidth: .infinity, minHeight: 38)
                     .background(alignment: .leading) {
-                        Rectangle().fill(color.opacity(0.4))
+                        Rectangle().fill(Palette.blue.opacity(0.4))
                             .frame(width: 2, height: 30)
                             .frame(width: 50, height: 38, alignment: .top)
                     }
@@ -502,7 +499,7 @@ private struct TripDetailView: View {
                             HStack(spacing: 8) {
                                 if let time = point.capturedAt {
                                     Text(time.formatted(.dateTime.month().day().hour().minute()))
-                                        .font(.subheadline)
+                                        .font(.footnote)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                         .layoutPriority(1)
@@ -514,7 +511,7 @@ private struct TripDetailView: View {
                                 if let place = displayPlace(for: point) {
                                     Spacer(minLength: 4)
                                     Text(place)
-                                        .font(.subheadline)
+                                        .font(.footnote)
                                         .foregroundStyle(.secondary)
                                         .lineLimit(1)
                                         .truncationMode(.tail)
@@ -524,11 +521,11 @@ private struct TripDetailView: View {
                                 .font(.subheadline)
                                 .foregroundStyle(point.note.isEmpty ? Palette.ink.opacity(0.48) : Palette.ink)
                                 .lineLimit(1)
-                            if index > 0, let previous = sortedPoints[index - 1].capturedAt,
-                               let current = point.capturedAt {
+                            if index > 0, sortedPoints[index - 1].capturedAt != nil,
+                               point.capturedAt != nil {
                                 Text(intervalDescription(from: sortedPoints[index - 1], to: point))
                                     .font(.caption.weight(.medium).monospacedDigit())
-                                    .foregroundStyle(intervalColor(current.timeIntervalSince(previous)))
+                                    .foregroundStyle(Palette.blue)
                                     .lineLimit(2)
                             }
                         }
@@ -602,12 +599,6 @@ private struct TripDetailView: View {
         return max(days.count, 1)
     }
 
-    private func intervalColor(_ interval: TimeInterval) -> Color {
-        if interval > 2 * 60 * 60 { return Palette.warning }
-        if interval < 20 * 60 { return Palette.shortInterval }
-        return Palette.blue
-    }
-
     @ViewBuilder
     private func pointThumbnail(_ point: PhotoPoint) -> some View {
         if let image = UIImage(contentsOfFile: store.thumbnailURL(for: point).path) {
@@ -620,6 +611,17 @@ private struct TripDetailView: View {
 
     private func pointCard(_ point: PhotoPoint) -> some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !point.note.isEmpty {
+                Button { editingPoint = point } label: {
+                    Text(point.note)
+                        .font(.callout)
+                        .foregroundStyle(Palette.ink)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .padding(12)
+            }
+
             Button { editingPoint = point } label: {
                 pointThumbnail(point)
                     .aspectRatio(1.8, contentMode: .fit)
@@ -642,7 +644,7 @@ private struct TripDetailView: View {
                                     .foregroundStyle(Palette.coral)
                             }
                         }
-                        .font(.subheadline)
+                        .font(.footnote)
                         .lineLimit(1)
                     }
                     .buttonStyle(.plain)
@@ -652,7 +654,7 @@ private struct TripDetailView: View {
                         Spacer(minLength: 8)
                         Button { openPlaceInMaps(for: point) } label: {
                             Text(place)
-                                .font(.subheadline)
+                                .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .truncationMode(.tail)
@@ -660,15 +662,6 @@ private struct TripDetailView: View {
                         .buttonStyle(.plain)
                         .accessibilityLabel("在地图中查看\(place)")
                     }
-                }
-                if !point.note.isEmpty {
-                    Button { editingPoint = point } label: {
-                        Text(point.note)
-                            .font(.system(size: 18))
-                            .foregroundStyle(Palette.ink)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(12)
