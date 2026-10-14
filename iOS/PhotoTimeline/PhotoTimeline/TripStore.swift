@@ -26,6 +26,7 @@ struct PhotoPoint: Codable, Identifiable {
     var latitude: Double? = nil
     var longitude: Double? = nil
     var placeName: String? = nil
+    var placeLookupVersion: Int? = nil
 }
 
 struct ImportResult {
@@ -144,13 +145,15 @@ final class TripStore: ObservableObject {
             }
 
             if let current = trip(id: tripID)?.points.first(where: { $0.id == pointID }),
-               current.placeName == nil,
+               current.placeLookupVersion != 1,
                let latitude = current.latitude, let longitude = current.longitude {
-                let location = CLLocation(latitude: latitude, longitude: longitude)
-                if let placemark = try? await geocoder.reverseGeocodeLocation(
-                    location, preferredLocale: Locale(identifier: "zh_CN")).first,
-                   let name = Self.placeName(from: placemark) {
-                    try? updateLocation(tripID: tripID, pointID: pointID, placeName: name)
+                let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+                if CLLocationCoordinate2DIsValid(coordinate) {
+                    let location = CLLocation(latitude: latitude, longitude: longitude)
+                    if let placemark = try? await geocoder.reverseGeocodeLocation(
+                        location, preferredLocale: Locale(identifier: "zh_CN")).first {
+                        try? updatePlace(tripID: tripID, pointID: pointID, placemark: placemark)
+                    }
                 }
             }
             if queued.isEmpty, needsLocationRefresh.remove(tripID) != nil {
@@ -160,19 +163,28 @@ final class TripStore: ObservableObject {
     }
 
     private func updateLocation(tripID: UUID, pointID: UUID,
-                                coordinate: CLLocationCoordinate2D? = nil,
-                                placeName: String? = nil) throws {
+                                coordinate: CLLocationCoordinate2D) throws {
         var updated = trips
         guard let tripIndex = updated.firstIndex(where: { $0.id == tripID }),
               let pointIndex = updated[tripIndex].points.firstIndex(where: { $0.id == pointID })
         else { throw TripStoreError.missingTrip }
-        if let coordinate {
-            updated[tripIndex].points[pointIndex].latitude = coordinate.latitude
-            updated[tripIndex].points[pointIndex].longitude = coordinate.longitude
+        updated[tripIndex].points[pointIndex].latitude = coordinate.latitude
+        updated[tripIndex].points[pointIndex].longitude = coordinate.longitude
+        try persist(updated)
+    }
+
+    private func updatePlace(tripID: UUID, pointID: UUID, placemark: CLPlacemark) throws {
+        guard let resolvedName = Self.placeName(from: placemark) else { return }
+        var updated = trips
+        guard let tripIndex = updated.firstIndex(where: { $0.id == tripID }),
+              let pointIndex = updated[tripIndex].points.firstIndex(where: { $0.id == pointID })
+        else { throw TripStoreError.missingTrip }
+        let oldName = updated[tripIndex].points[pointIndex].placeName
+        let previousAutomaticName = Self.districtName(from: placemark)
+        if oldName == nil || oldName == previousAutomaticName {
+            updated[tripIndex].points[pointIndex].placeName = resolvedName
         }
-        if let placeName, updated[tripIndex].points[pointIndex].placeName == nil {
-            updated[tripIndex].points[pointIndex].placeName = placeName
-        }
+        updated[tripIndex].points[pointIndex].placeLookupVersion = 1
         try persist(updated)
     }
 
@@ -182,6 +194,10 @@ final class TripStore: ObservableObject {
         }) {
             return interest
         }
+        return districtName(from: placemark)
+    }
+
+    private static func districtName(from placemark: CLPlacemark) -> String? {
         let parts = [placemark.locality ?? placemark.administrativeArea,
                      placemark.subLocality]
             .compactMap { $0 }

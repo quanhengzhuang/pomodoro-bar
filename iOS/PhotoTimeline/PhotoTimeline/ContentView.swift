@@ -408,7 +408,7 @@ private struct TripDetailView: View {
         Task { await store.populateLocations(in: tripID) }
         if result.failed > 0 || result.missingTimes > 0 {
             var lines = ["已导入 \(result.imported) 张照片。"]
-            if result.missingTimes > 0 { lines.append("\(result.missingTimes) 张没有拍摄时间，请在时间点中补录。") }
+            if result.missingTimes > 0 { lines.append("\(result.missingTimes) 张没有拍摄时间，会排在时间线末尾。") }
             if result.failed > 0 { lines.append("\(result.failed) 张未能导入，请确认照片已下载到本机后重试。") }
             alert = AppAlert(title: "导入结果", message: lines.joined(separator: "\n"))
         }
