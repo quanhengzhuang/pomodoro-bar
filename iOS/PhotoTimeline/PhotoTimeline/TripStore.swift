@@ -180,6 +180,21 @@ final class TripStore: ObservableObject {
         return (id, result)
     }
 
+    func createTrip(title: String, from assets: [PHAsset],
+                    and items: [PhotosPickerItem]) throws -> (id: UUID?, result: ImportResult) {
+        var allAssets = assets
+        var failedSelections = 0
+        for item in items {
+            guard let identifier = item.itemIdentifier,
+                  let asset = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil).firstObject else {
+                failedSelections += 1
+                continue
+            }
+            allAssets.append(asset)
+        }
+        return try createTrip(title: title, from: allAssets, failedSelections: failedSelections)
+    }
+
     func renameTrip(id: UUID, title: String) throws {
         var updated = trips
         guard let index = updated.firstIndex(where: { $0.id == id }) else { throw TripStoreError.missingTrip }
