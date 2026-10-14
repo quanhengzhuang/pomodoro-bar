@@ -268,6 +268,7 @@ private struct TripDetailView: View {
         let calendar = Calendar.current
         return Array(Set(sortedPoints.compactMap { $0.capturedAt.map(calendar.startOfDay(for:)) })).sorted()
     }
+    private var totalDatedDays: Int { max(datedDays.count, 1) }
     private var hasMissingTimes: Bool { sortedPoints.contains { $0.capturedAt == nil } }
     private static let cardTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -483,6 +484,8 @@ private struct TripDetailView: View {
                     .font(.system(size: 11, weight: .bold).monospacedDigit())
                 Text(date.formatted(.dateTime.month(.twoDigits).day(.twoDigits)))
                     .font(.caption.weight(.bold).monospacedDigit())
+                Text("第 \(dayNumber(for: date))/\(totalDatedDays) 天")
+                    .font(.system(size: 9, weight: .semibold).monospacedDigit())
             } else {
                 Text("待补录")
                     .font(.system(size: 10, weight: .bold))
@@ -591,7 +594,7 @@ private struct TripDetailView: View {
                 Text(date.formatted(.dateTime.year().month().day().weekday(.wide)))
                     .font(.subheadline.weight(.bold))
                 Spacer(minLength: 4)
-                Text("第\(dayNumber(for: date))天")
+                Text("第 \(dayNumber(for: date))/\(totalDatedDays) 天")
                     .font(.caption.weight(.bold))
             } else {
                 Text("待补录时间")
