@@ -972,16 +972,16 @@ private struct PointEditor: View {
                         .frame(height: 180)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                         .accessibilityLabel("上下拖动调整照片在卡片中的位置")
-                        Text("上下拖动照片调整显示位置")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
                         HStack {
-                            Text("原图不会修改")
+                            Text("上下拖动照片调整显示位置")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.8)
                             Spacer()
                             Button("恢复垂直居中") { framingY = 0.5 }
-                            .font(.footnote)
+                                .font(.footnote)
+                                .fixedSize()
                         }
                     }
                 }
