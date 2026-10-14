@@ -4,7 +4,6 @@ import ImageIO
 import Photos
 import PhotosUI
 import SwiftUI
-import UniformTypeIdentifiers
 import UIKit
 
 struct Trip: Codable, Identifiable {
@@ -27,6 +26,7 @@ struct PhotoPoint: Codable, Identifiable {
     var longitude: Double? = nil
     var placeName: String? = nil
     var placeLookupVersion: Int? = nil
+    var assetIdentifier: String? = nil
 }
 
 struct ImportResult {
@@ -95,6 +95,25 @@ final class TripStore: ObservableObject {
         thumbnailsURL.appendingPathComponent(point.thumbnailName)
     }
 
+    func image(for point: PhotoPoint, targetSize: CGSize) async -> UIImage? {
+        guard let assetIdentifier = point.assetIdentifier else {
+            return UIImage(contentsOfFile: thumbnailURL(for: point).path)
+        }
+        let assets = PHAsset.fetchAssets(withLocalIdentifiers: [assetIdentifier], options: nil)
+        guard let asset = assets.firstObject else { return nil }
+        return await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.deliveryMode = .highQualityFormat
+            options.resizeMode = .fast
+            options.isNetworkAccessAllowed = true
+            PHImageManager.default().requestImage(for: asset, targetSize: targetSize,
+                contentMode: .aspectFit, options: options) { image, info in
+                guard info?[PHImageResultIsDegradedKey] as? Bool != true else { return }
+                continuation.resume(returning: image)
+            }
+        }
+    }
+
     func addTrip(title: String) throws -> UUID {
         let id = UUID()
         var updated = trips
@@ -139,7 +158,8 @@ final class TripStore: ObservableObject {
             guard !Task.isCancelled,
                   let point = trip(id: tripID)?.points.first(where: { $0.id == pointID }) else { continue }
 
-            if point.latitude == nil || point.longitude == nil,
+            if point.assetIdentifier == nil,
+               point.latitude == nil || point.longitude == nil,
                let coordinate = PhotoMetadata.readGPS(from: originalsURL.appendingPathComponent(point.originalName)) {
                 try? updateLocation(tripID: tripID, pointID: pointID, coordinate: coordinate)
             }
@@ -230,8 +250,9 @@ final class TripStore: ObservableObject {
         if !FileManager.default.fileExists(atPath: backupManifestURL.path) {
             try FileManager.default.copyItem(at: manifestURL, to: backupManifestURL)
         }
-        for (source, directory) in [(originalURL, backupOriginalsURL),
-                                     (thumbnailURL, backupThumbnailsURL)] {
+        let copiedFiles: [(URL, URL)] = point.assetIdentifier == nil
+            ? [(originalURL, backupOriginalsURL), (thumbnailURL, backupThumbnailsURL)] : []
+        for (source, directory) in copiedFiles {
             let destination = directory.appendingPathComponent(source.lastPathComponent)
             if FileManager.default.fileExists(atPath: source.path),
                !FileManager.default.fileExists(atPath: destination.path) {
@@ -242,18 +263,30 @@ final class TripStore: ObservableObject {
         updated[tripIndex].points.remove(at: pointIndex)
         try persist(updated)
         // The backup keeps both images recoverable even if cleanup succeeds.
-        try? FileManager.default.removeItem(at: originalURL)
-        try? FileManager.default.removeItem(at: thumbnailURL)
+        for (source, _) in copiedFiles { try? FileManager.default.removeItem(at: source) }
+    }
+
+    func deleteLegacyPhotos(in tripID: UUID) throws -> Int {
+        guard let trip = trip(id: tripID) else { throw TripStoreError.missingTrip }
+        let pointIDs = trip.points.filter { $0.assetIdentifier == nil }.map(\.id)
+        for pointID in pointIDs { try deletePoint(tripID: tripID, pointID: pointID) }
+        for pointID in pointIDs {
+            let backupURL = rootURL.appendingPathComponent("Backups/DeletedPoints/\(pointID.uuidString)")
+            try? FileManager.default.removeItem(at: backupURL.appendingPathComponent("Originals"))
+            try? FileManager.default.removeItem(at: backupURL.appendingPathComponent("Thumbnails"))
+        }
+        return pointIDs.count
     }
 
     func importPhotos(_ items: [PhotosPickerItem], into tripID: UUID) async -> ImportResult {
         var result = ImportResult()
         for item in items {
             do {
-                guard let data = try await item.loadTransferable(type: Data.self) else {
+                guard let identifier = item.itemIdentifier,
+                      let asset = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil).firstObject else {
                     throw TripStoreError.noImage
                 }
-                if try importPhoto(data, into: tripID) { result.missingTimes += 1 }
+                if try importPhoto(asset, into: tripID) { result.missingTimes += 1 }
                 result.imported += 1
             } catch {
                 result.failed += 1
@@ -266,11 +299,7 @@ final class TripStore: ObservableObject {
         var result = ImportResult()
         for asset in assets {
             do {
-                guard let data = await Self.imageData(for: asset) else { throw TripStoreError.noImage }
-                if try importPhoto(data, into: tripID, capturedAt: asset.creationDate,
-                                   coordinate: asset.location?.coordinate) {
-                    result.missingTimes += 1
-                }
+                if try importPhoto(asset, into: tripID) { result.missingTimes += 1 }
                 result.imported += 1
             } catch {
                 result.failed += 1
@@ -279,48 +308,20 @@ final class TripStore: ObservableObject {
         return result
     }
 
-    private static func imageData(for asset: PHAsset) async -> Data? {
-        await withCheckedContinuation { continuation in
-            let options = PHImageRequestOptions()
-            options.version = .original
-            options.deliveryMode = .highQualityFormat
-            options.isNetworkAccessAllowed = true
-            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) {
-                data, _, _, _ in
-                continuation.resume(returning: data)
-            }
+    private func importPhoto(_ asset: PHAsset, into tripID: UUID) throws -> Bool {
+        guard asset.mediaType == .image else { throw TripStoreError.noImage }
+        var updated = trips
+        guard let index = updated.firstIndex(where: { $0.id == tripID }) else {
+            throw TripStoreError.missingTrip
         }
-    }
-
-    private func importPhoto(_ data: Data, into tripID: UUID, capturedAt: Date? = nil,
-                             coordinate: CLLocationCoordinate2D? = nil) throws -> Bool {
-        let image = try PhotoMetadata.read(data)
-        let id = UUID()
-        let originalName = "\(id.uuidString).\(image.fileExtension)"
-        let thumbnailName = "\(id.uuidString).jpg"
-        let originalURL = originalsURL.appendingPathComponent(originalName)
-        let thumbnailURL = thumbnailsURL.appendingPathComponent(thumbnailName)
-        do {
-            try data.write(to: originalURL, options: .atomic)
-            try image.thumbnail.write(to: thumbnailURL, options: .atomic)
-            var updated = trips
-            guard let index = updated.firstIndex(where: { $0.id == tripID }) else {
-                throw TripStoreError.missingTrip
-            }
-            let date = capturedAt ?? image.capturedAt
-            var point = PhotoPoint(id: id, originalName: originalName,
-                thumbnailName: thumbnailName, capturedAt: date,
-                note: "", addedAt: Date())
-            point.latitude = (image.coordinate ?? coordinate)?.latitude
-            point.longitude = (image.coordinate ?? coordinate)?.longitude
-            updated[index].points.append(point)
-            try persist(updated)
-            return date == nil
-        } catch {
-            try? FileManager.default.removeItem(at: originalURL)
-            try? FileManager.default.removeItem(at: thumbnailURL)
-            throw error
-        }
+        var point = PhotoPoint(id: UUID(), originalName: "", thumbnailName: "",
+                               capturedAt: asset.creationDate, note: "", addedAt: Date())
+        point.assetIdentifier = asset.localIdentifier
+        point.latitude = asset.location?.coordinate.latitude
+        point.longitude = asset.location?.coordinate.longitude
+        updated[index].points.append(point)
+        try persist(updated)
+        return point.capturedAt == nil
     }
 
     private func persist(_ updated: [Trip]) throws {
@@ -345,39 +346,6 @@ final class TripStore: ObservableObject {
 }
 
 private enum PhotoMetadata {
-    struct ImageInfo {
-        let capturedAt: Date?
-        let coordinate: CLLocationCoordinate2D?
-        let fileExtension: String
-        let thumbnail: Data
-    }
-
-    static func read(_ data: Data) throws -> ImageInfo {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let type = CGImageSourceGetType(source) as String?,
-              let imageType = UTType(type),
-              let fileExtension = imageType.preferredFilenameExtension,
-              let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                  kCGImageSourceCreateThumbnailFromImageAlways: true,
-                  kCGImageSourceCreateThumbnailWithTransform: true,
-                  kCGImageSourceThumbnailMaxPixelSize: 1200
-              ] as CFDictionary),
-              let thumbnail = UIImage(cgImage: cgImage).jpegData(compressionQuality: 0.82)
-        else { throw TripStoreError.invalidImage }
-
-        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
-        let exif = properties?[kCGImagePropertyExifDictionary] as? [CFString: Any]
-        let tiff = properties?[kCGImagePropertyTIFFDictionary] as? [CFString: Any]
-        let timestamp = (exif?[kCGImagePropertyExifDateTimeOriginal] as? String)
-            ?? (exif?[kCGImagePropertyExifDateTimeDigitized] as? String)
-            ?? (tiff?[kCGImagePropertyTIFFDateTime] as? String)
-        let offset = (exif?[kCGImagePropertyExifOffsetTimeOriginal] as? String)
-            ?? (exif?[kCGImagePropertyExifOffsetTimeDigitized] as? String)
-        return ImageInfo(capturedAt: parseDate(timestamp, offset: offset),
-                         coordinate: gpsCoordinate(in: properties),
-                         fileExtension: fileExtension, thumbnail: thumbnail)
-    }
-
     static func readGPS(from url: URL) -> CLLocationCoordinate2D? {
         guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
               let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
@@ -396,18 +364,4 @@ private enum PhotoMetadata {
         return CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
     }
 
-    private static func parseDate(_ timestamp: String?, offset: String?) -> Date? {
-        guard let timestamp else { return nil }
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
-        if let offset, !offset.isEmpty {
-            let normalized = offset.replacingOccurrences(of: ":", with: "")
-            formatter.dateFormat = "yyyy:MM:dd HH:mm:ssZ"
-            return formatter.date(from: timestamp + normalized)
-        }
-        // EXIF often omits a zone; use the device's zone and let the user correct it.
-        formatter.timeZone = .current
-        return formatter.date(from: timestamp)
-    }
 }

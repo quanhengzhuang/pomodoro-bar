@@ -55,6 +55,35 @@ private struct FramedPhoto: View {
     }
 }
 
+private struct PointPhoto: View {
+    @EnvironmentObject private var store: TripStore
+    let point: PhotoPoint
+    let targetSize: CGSize
+    @State private var image: UIImage?
+    @State private var loading = true
+
+    var body: some View {
+        Group {
+            if let image {
+                FramedPhoto(image: image, x: point.framingX ?? 0.5, y: point.framingY ?? 0.5)
+            } else if loading {
+                Rectangle().fill(Palette.mist)
+                    .overlay(ProgressView())
+            } else {
+                Rectangle().fill(Palette.mist)
+                    .overlay(Image(systemName: "photo.badge.exclamationmark")
+                        .foregroundStyle(Palette.blue))
+            }
+        }
+        .task(id: point.assetIdentifier ?? point.thumbnailName) {
+            image = nil
+            loading = true
+            image = await store.image(for: point, targetSize: targetSize)
+            loading = false
+        }
+    }
+}
+
 private struct AppAlert: Identifiable {
     let id = UUID()
     let title: String
@@ -225,15 +254,7 @@ struct ContentView: View {
     }
 
     private func thumbnail(for point: PhotoPoint) -> some View {
-        Group {
-            if let image = UIImage(contentsOfFile: store.thumbnailURL(for: point).path) {
-                Image(uiImage: image).resizable().scaledToFill()
-            } else {
-                Rectangle().fill(Palette.mist)
-                    .overlay(Image(systemName: "photo").foregroundStyle(Palette.blue))
-            }
-        }
-        .clipped()
+        PointPhoto(point: point, targetSize: CGSize(width: 150, height: 150))
     }
 }
 
@@ -248,6 +269,7 @@ private struct TripDetailView: View {
     @State private var importing = false
     @State private var editingPoint: PhotoPoint?
     @State private var showingRename = false
+    @State private var showingLegacyDelete = false
     @State private var renameTitle = ""
     @State private var alert: AppAlert?
 
@@ -270,6 +292,7 @@ private struct TripDetailView: View {
     }
     private var totalDatedDays: Int { max(datedDays.count, 1) }
     private var hasMissingTimes: Bool { sortedPoints.contains { $0.capturedAt == nil } }
+    private var legacyPhotoCount: Int { sortedPoints.filter { $0.assetIdentifier == nil }.count }
     private static let cardTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
@@ -350,6 +373,18 @@ private struct TripDetailView: View {
                 }
             }
             .toolbar {
+                if legacyPhotoCount > 0 {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Menu {
+                            Button("移除旧版照片（\(legacyPhotoCount) 张）", role: .destructive) {
+                                showingLegacyDelete = true
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .accessibilityLabel("旧版照片管理")
+                    }
+                }
                 if !sortedPoints.isEmpty {
                     ToolbarItem(placement: .navigationBarTrailing) {
                         Menu {
@@ -359,7 +394,7 @@ private struct TripDetailView: View {
                                 }
                             }
                             if hasMissingTimes {
-                                Button("待补录时间") {
+                                Button("无拍摄时间") {
                                     withAnimation { reader.scrollTo(TimelineSectionID.missingTime, anchor: .top) }
                                 }
                             }
@@ -397,6 +432,19 @@ private struct TripDetailView: View {
             PointEditor(tripID: tripID, point: point)
         }
         .sheet(isPresented: $showingRename) { renameSheet }
+        .confirmationDialog("移除本行程的旧版照片？", isPresented: $showingLegacyDelete,
+                            titleVisibility: .visible) {
+            Button("移除 \(legacyPhotoCount) 张旧版照片", role: .destructive) {
+                do {
+                    let count = try store.deleteLegacyPhotos(in: tripID)
+                    alert = AppAlert(title: "已移除", message: "已从行程移除 \(count) 张旧版照片。可以从系统相册重新添加。")
+                } catch {
+                    alert = AppAlert(title: "删除未完成", message: error.localizedDescription)
+                }
+            }
+        } message: {
+            Text("请先确认系统相册中仍有原图。会移除旧照片、时间点和备注，完成后清理 App 内的照片副本；系统相册不会删除。")
+        }
         .alert(item: $alert) { value in
             Alert(title: Text(value.title), message: Text(value.message),
                   dismissButton: .default(Text("知道了")))
@@ -410,7 +458,7 @@ private struct TripDetailView: View {
         if result.failed > 0 || result.missingTimes > 0 {
             var lines = ["已导入 \(result.imported) 张照片。"]
             if result.missingTimes > 0 { lines.append("\(result.missingTimes) 张没有拍摄时间，会排在时间线末尾。") }
-            if result.failed > 0 { lines.append("\(result.failed) 张未能导入，请确认照片已下载到本机后重试。") }
+            if result.failed > 0 { lines.append("\(result.failed) 张未能添加，请检查系统相册访问权限后重试。") }
             alert = AppAlert(title: "导入结果", message: lines.joined(separator: "\n"))
         }
     }
@@ -487,7 +535,7 @@ private struct TripDetailView: View {
                 Text("第 \(dayNumber(for: date))/\(totalDatedDays) 天")
                     .font(.system(size: 9, weight: .semibold).monospacedDigit())
             } else {
-                Text("待补录")
+                Text("无时间")
                     .font(.system(size: 10, weight: .bold))
             }
         }
@@ -497,7 +545,7 @@ private struct TripDetailView: View {
         .frame(width: 50, height: 68)
         .accessibilityLabel(point.capturedAt.map {
             $0.formatted(.dateTime.year().month().day().weekday(.wide))
-        } ?? "待补录时间")
+        } ?? "无拍摄时间")
     }
 
     private var compactTimeline: some View {
@@ -525,7 +573,7 @@ private struct TripDetailView: View {
                                         .lineLimit(1)
                                         .layoutPriority(1)
                                 } else {
-                                    Text("补录拍摄时间")
+                                    Text("无拍摄时间")
                                         .font(.subheadline)
                                         .foregroundStyle(Palette.coral)
                                 }
@@ -563,7 +611,7 @@ private struct TripDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .combine)
-                .accessibilityHint("打开后可修改时间、备注或删除")
+                .accessibilityHint("打开后可修改备注、照片位置或删除")
             }
         }
     }
@@ -597,7 +645,7 @@ private struct TripDetailView: View {
                 Text("第 \(dayNumber(for: date))/\(totalDatedDays) 天")
                     .font(.caption.weight(.bold))
             } else {
-                Text("待补录时间")
+                Text("无拍摄时间")
                     .font(.subheadline.weight(.bold))
                 Spacer(minLength: 4)
             }
@@ -622,12 +670,7 @@ private struct TripDetailView: View {
 
     @ViewBuilder
     private func pointThumbnail(_ point: PhotoPoint) -> some View {
-        if let image = UIImage(contentsOfFile: store.thumbnailURL(for: point).path) {
-            FramedPhoto(image: image, x: point.framingX ?? 0.5, y: point.framingY ?? 0.5)
-        } else {
-            Rectangle().fill(Palette.mist)
-                .overlay(Image(systemName: "photo").foregroundStyle(Palette.blue))
-        }
+        PointPhoto(point: point, targetSize: CGSize(width: 1200, height: 1200))
     }
 
     private func pointCard(_ point: PhotoPoint) -> some View {
@@ -661,7 +704,7 @@ private struct TripDetailView: View {
                                 Text(Self.cardTimeFormatter.string(from: time))
                                     .foregroundStyle(.secondary)
                             } else {
-                                Text("缺少拍摄时间 · 点此补录")
+                                Text("无拍摄时间")
                                     .foregroundStyle(Palette.coral)
                             }
                         }
@@ -802,7 +845,7 @@ private struct DatePhotoPicker: View {
 
                 if authorization == .authorized || authorization == .limited {
                     if authorization == .limited {
-                        Text("当前仅显示允许访问的照片。也可以浏览全部照片。")
+                        Text("当前仅显示允许访问的照片。添加其他照片前，请在系统设置中扩大相册访问范围。")
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -835,11 +878,13 @@ private struct DatePhotoPicker: View {
                         .frame(maxHeight: .infinity)
                 }
 
-                PhotosPicker(selection: $systemSelection, matching: .images,
-                             preferredItemEncoding: .current) {
-                    Label("浏览全部照片", systemImage: "photo.on.rectangle")
+                if authorization == .authorized {
+                    PhotosPicker(selection: $systemSelection, matching: .images,
+                                 preferredItemEncoding: .current) {
+                        Label("浏览全部照片", systemImage: "photo.on.rectangle")
+                    }
+                    .padding(.bottom, 12)
                 }
-                .padding(.bottom, 12)
             }
             .navigationTitle("按日期添加照片")
             .navigationBarTitleDisplayMode(.inline)
@@ -930,6 +975,7 @@ private struct PointEditor: View {
     let point: PhotoPoint
 
     @State private var note: String
+    @State private var previewImage: UIImage?
     @State private var framingX: Double
     @State private var framingY: Double
     @State private var dragStartY: Double?
@@ -957,7 +1003,7 @@ private struct PointEditor: View {
         NavigationStack {
             Form {
                 Section("照片显示位置") {
-                    if let image = UIImage(contentsOfFile: store.thumbnailURL(for: point).path) {
+                    if let image = previewImage {
                         GeometryReader { proxy in
                             let metrics = CropMetrics(imageSize: image.size, viewport: proxy.size)
                             FramedPhoto(image: image, x: framingX, y: framingY)
@@ -986,6 +1032,10 @@ private struct PointEditor: View {
                                 .font(.footnote)
                                 .fixedSize()
                         }
+                    } else {
+                        Text("照片暂时不可用，请检查相册权限或网络连接。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 Section("拍摄信息") {
@@ -1051,7 +1101,12 @@ private struct PointEditor: View {
                     }
                 }
             } message: {
-                Text("只删除这段行程中的时间点和 App 内的照片副本，系统相册中的原图不会删除。")
+                Text(point.assetIdentifier == nil
+                     ? "只删除这段行程中的时间点和 App 内的照片副本，系统相册中的原图不会删除。"
+                     : "只从这段行程移除照片，不会删除系统相册中的原图。")
+            }
+            .task(id: point.assetIdentifier ?? point.thumbnailName) {
+                previewImage = await store.image(for: point, targetSize: CGSize(width: 1200, height: 1200))
             }
         }
     }
