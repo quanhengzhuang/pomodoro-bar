@@ -110,19 +110,15 @@ final class TripStore: ObservableObject {
         try persist(updated)
     }
 
-    func updatePoint(tripID: UUID, pointID: UUID, capturedAt: Date?, note: String,
-                     framingX: Double, framingY: Double, placeName: String?) throws {
+    func updatePoint(tripID: UUID, pointID: UUID, note: String,
+                     framingX: Double, framingY: Double) throws {
         var updated = trips
         guard let tripIndex = updated.firstIndex(where: { $0.id == tripID }),
               let pointIndex = updated[tripIndex].points.firstIndex(where: { $0.id == pointID })
         else { throw TripStoreError.missingTrip }
-        updated[tripIndex].points[pointIndex].capturedAt = capturedAt
         updated[tripIndex].points[pointIndex].note = note.trimmingCharacters(in: .whitespacesAndNewlines)
         updated[tripIndex].points[pointIndex].framingX = min(max(framingX, 0), 1)
         updated[tripIndex].points[pointIndex].framingY = min(max(framingY, 0), 1)
-        if let placeName {
-            updated[tripIndex].points[pointIndex].placeName = placeName.trimmingCharacters(in: .whitespacesAndNewlines)
-        }
         try persist(updated)
     }
 
@@ -161,16 +157,6 @@ final class TripStore: ObservableObject {
                 queued = trip(id: tripID)?.points.map(\.id) ?? []
             }
         }
-    }
-
-    func suggestedPlaceName(for point: PhotoPoint) async -> String? {
-        guard let latitude = point.latitude, let longitude = point.longitude else { return nil }
-        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-        guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
-        let location = CLLocation(latitude: latitude, longitude: longitude)
-        guard let placemark = try? await CLGeocoder().reverseGeocodeLocation(
-            location, preferredLocale: Locale(identifier: "zh_CN")).first else { return nil }
-        return Self.placeName(from: placemark)
     }
 
     private func updateLocation(tripID: UUID, pointID: UUID,

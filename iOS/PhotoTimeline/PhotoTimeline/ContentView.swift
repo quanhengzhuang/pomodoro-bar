@@ -927,11 +927,6 @@ private struct PointEditor: View {
     let point: PhotoPoint
 
     @State private var note: String
-    @State private var placeName: String
-    @State private var placeEdited = false
-    @State private var isRecognizingPlace = false
-    @State private var hasTime: Bool
-    @State private var capturedAt: Date
     @State private var framingX: Double
     @State private var framingY: Double
     @State private var dragStartY: Double?
@@ -942,13 +937,17 @@ private struct PointEditor: View {
         self.tripID = tripID
         self.point = point
         _note = State(initialValue: point.note)
-        _placeName = State(initialValue: point.placeName ?? "")
-        _hasTime = State(initialValue: point.capturedAt != nil)
         _framingX = State(initialValue: point.framingX ?? 0.5)
         _framingY = State(initialValue: point.framingY ?? 0.5)
-        _capturedAt = State(initialValue: point.capturedAt
-            ?? Calendar.current.dateInterval(of: .minute, for: Date())?.start
-            ?? Date())
+    }
+
+    private var currentPoint: PhotoPoint {
+        store.trip(id: tripID)?.points.first(where: { $0.id == point.id }) ?? point
+    }
+
+    private var displayedPlaceName: String {
+        let name = currentPoint.placeName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.flatMap { $0.isEmpty ? nil : $0 } ?? "无地点信息"
     }
 
     var body: some View {
@@ -986,44 +985,29 @@ private struct PointEditor: View {
                         }
                     }
                 }
-                Section("拍摄时间") {
-                    Toggle("使用时间", isOn: $hasTime)
-                    if hasTime {
-                        DatePicker("日期和时间", selection: $capturedAt,
-                                   displayedComponents: [.date, .hourAndMinute])
-                    } else {
-                        Text("没有拍摄时间的照片会排在时间线末尾。")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Section("地点或备注") {
+                Section("拍摄信息") {
                     HStack {
-                        TextField("拍摄地点", text: $placeName)
-                            .onChange(of: placeName) { _ in placeEdited = true }
-                        if point.latitude != nil, point.longitude != nil {
-                            Button(isRecognizingPlace ? "识别中…" : "重新识别") {
-                                isRecognizingPlace = true
-                                Task {
-                                    let name = await store.suggestedPlaceName(for: point)
-                                    isRecognizingPlace = false
-                                    if let name {
-                                        placeName = name
-                                        placeEdited = true
-                                    } else {
-                                        alert = AppAlert(title: "无法识别地点",
-                                                         message: "请检查网络连接，或手动填写地点。")
-                                    }
-                                }
-                            }
-                            .disabled(isRecognizingPlace)
-                        }
+                        Text("时间")
+                        Spacer()
+                        Text(currentPoint.capturedAt?.formatted(
+                            .dateTime.year().month().day().hour().minute()) ?? "无拍摄时间")
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
                     }
-                    if let latitude = point.latitude, let longitude = point.longitude {
+                    HStack {
+                        Text("地点")
+                        Spacer()
+                        Text(displayedPlaceName)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    if let latitude = currentPoint.latitude, let longitude = currentPoint.longitude {
                         Text(String(format: "GPS：%.4f, %.4f", latitude, longitude))
                             .font(.footnote)
                             .foregroundStyle(.secondary)
                     }
+                }
+                Section("备注") {
                     TextField("例如：到达海边，看了日落", text: $note, axis: .vertical)
                         .lineLimit(3...8)
                 }
@@ -1040,23 +1024,13 @@ private struct PointEditor: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("保存") {
                         do {
-                            let chosenTime: Date?
-                            if hasTime {
-                                chosenTime = capturedAt == point.capturedAt ? capturedAt
-                                    : (Calendar.current.dateInterval(of: .minute, for: capturedAt)?.start ?? capturedAt)
-                            } else {
-                                chosenTime = nil
-                            }
                             try store.updatePoint(tripID: tripID, pointID: point.id,
-                                                  capturedAt: chosenTime, note: note,
-                                                  framingX: framingX, framingY: framingY,
-                                                  placeName: placeEdited ? placeName : nil)
+                                                  note: note, framingX: framingX, framingY: framingY)
                             dismiss()
                         } catch {
                             alert = AppAlert(title: "无法保存", message: error.localizedDescription)
                         }
                     }
-                    .disabled(isRecognizingPlace)
                 }
             }
             .alert(item: $alert) { value in
