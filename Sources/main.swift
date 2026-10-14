@@ -182,7 +182,7 @@ struct PomodoroRecord: Codable, Hashable {
 /// - `NSApplicationDelegate`：处理应用启动；
 /// - `NSMenuDelegate`：每次打开菜单前刷新 iCloud 数据；
 /// - `NSUserNotificationCenterDelegate`：前台也展示完成提醒。
-final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificationCenterDelegate, NSMenuDelegate {
+final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificationCenterDelegate, NSMenuDelegate, NSWindowDelegate {
     // MARK: - 菜单栏基础对象
 
     /// 系统菜单栏右侧的状态项；宽度随图标和时间文字变化。
@@ -230,7 +230,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private let recordsFileName = "records.json"
     private let dailyGuidanceFileName = "daily-guidance.json"
     private let iCloudDataDirectoryName = "PomodoroBar"
-    // 今日指引显示与编辑共享这些尺寸，保证每行换行位置一致。
+    // 今日指引菜单与编辑窗口的默认宽度、文字内边距保持一致；拉伸后编辑框重新排版。
     private let dailyGuidanceMenuWidth: CGFloat = 520
     private let dailyGuidanceHorizontalPadding: CGFloat = 16
     private let dailyGuidanceVerticalPadding: CGFloat = 8
@@ -696,8 +696,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         let guidance = dailyGuidanceByDate[todayDateKey] ?? ""
         if !guidance.isEmpty {
             let guidanceItem = NSMenuItem()
-            guidanceItem.view = makeDailyGuidanceMenuView(text: guidance)
-            guidanceItem.isEnabled = false
+            guidanceItem.view = makeDailyGuidanceMenuView(text: guidance, editable: true)
             menu.addItem(guidanceItem)
         }
 
@@ -713,8 +712,8 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     /// 创建能完整自动换行的自定义 NSMenuItem 内容视图。
     ///
     /// 普通 NSMenuItem.title 不适合多行长文本，因此使用只读 NSTextView，并通过
-    /// LayoutManager 计算实际高度。宽度、边距和字体与编辑框共享常量。
-    private func makeDailyGuidanceMenuView(text: String) -> NSView {
+    /// LayoutManager 计算实际高度。只有今天的正文可以通过双击打开编辑窗口。
+    private func makeDailyGuidanceMenuView(text: String, editable: Bool = false) -> NSView {
         let contentWidth = dailyGuidanceMenuWidth - dailyGuidanceHorizontalPadding * 2
         let body = NSTextView(frame: NSRect(
             x: dailyGuidanceHorizontalPadding,
@@ -740,6 +739,11 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             string: text,
             attributes: dailyGuidanceTextAttributes
         ))
+        if editable {
+            let doubleClick = NSClickGestureRecognizer(target: self, action: #selector(openDailyGuidanceEditorFromMenu(_:)))
+            doubleClick.numberOfClicksRequired = 2
+            body.addGestureRecognizer(doubleClick)
+        }
 
         let bodyHeight: CGFloat
         if let textContainer = body.textContainer, let layoutManager = body.layoutManager {
@@ -755,6 +759,14 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         let container = NSView(frame: NSRect(x: 0, y: 0, width: dailyGuidanceMenuWidth, height: viewHeight))
         container.addSubview(body)
         return container
+    }
+
+    /// 菜单结束跟踪后再打开模态窗口，避免在菜单事件处理中嵌套窗口事件循环。
+    @objc private func openDailyGuidanceEditorFromMenu(_ gesture: NSClickGestureRecognizer) {
+        menu.cancelTracking()
+        DispatchQueue.main.async { [weak self] in
+            self?.editDailyGuidance()
+        }
     }
 
     /// 展示和编辑共用的文字属性，确保颜色、字号和斜体一致。
@@ -1530,17 +1542,28 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
     }
 
-    /// 使用多行 NSTextView 编辑今天的指引。
+    /// 使用可拉伸的独立窗口编辑今天的指引；取消、Esc、关闭窗口均不保存。
     ///
-    /// 编辑框与菜单显示共用宽度、边距和 attributed-string 属性，因此同一文本换行一致。
+    /// 默认宽度与菜单正文的排版一致；改变窗口宽度后文本随输入区域重新换行。
     /// 保存前重新加载文件，尽量合并其他设备刚写入的日期；失败时恢复内存旧值。
     @objc private func editDailyGuidance() {
-        let alert = makeAlert()
-        alert.messageText = "今日指引"
+        let window = NSPanel(
+            contentRect: NSRect(x: 0, y: 0, width: dailyGuidanceMenuWidth + 48, height: 360),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "今日指引"
+        window.contentMinSize = NSSize(width: 380, height: 220)
+        window.isReleasedWhenClosed = false
+        window.delegate = self
+        window.center()
+
         let weekday = historyWeekdayFormatter.string(from: Date())
-        alert.informativeText = "\(todayDateKey) \(weekday) · 支持换行；保存空内容可清除。"
-        alert.addButton(withTitle: "保存")
-        alert.addButton(withTitle: "取消")
+        let infoLabel = NSTextField(labelWithString: "\(todayDateKey) \(weekday) · 支持换行；保存空内容可清除。")
+        let saveButton = NSButton(title: "保存", target: self, action: #selector(saveDailyGuidanceEditor(_:)))
+        let cancelButton = NSButton(title: "取消", target: self, action: #selector(cancelDailyGuidanceEditor(_:)))
+        cancelButton.keyEquivalent = "\u{1b}"
 
         let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: dailyGuidanceMenuWidth, height: 220))
         scrollView.borderType = .noBorder
@@ -1556,9 +1579,9 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         scrollView.layer?.borderColor = NSColor.separatorColor.cgColor
 
         let textView = NSTextView(frame: scrollView.contentView.bounds)
-        // TextView 宽度固定，垂直方向允许内容增长并由外层 ScrollView 滚动。
-        textView.minSize = NSSize(width: dailyGuidanceMenuWidth, height: scrollView.contentSize.height)
-        textView.maxSize = NSSize(width: dailyGuidanceMenuWidth, height: CGFloat.greatestFiniteMagnitude)
+        // 宽度随 ScrollView 改变、文字重新换行；高度增长时由 ScrollView 滚动。
+        textView.minSize = NSSize(width: 0, height: scrollView.contentSize.height)
+        textView.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
         textView.textContainerInset = NSSize(
             width: dailyGuidanceHorizontalPadding,
             height: dailyGuidanceVerticalPadding
@@ -1570,8 +1593,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         textView.isVerticallyResizable = true
         textView.autoresizingMask = [.width]
         textView.textContainer?.lineFragmentPadding = 0
-        textView.textContainer?.widthTracksTextView = false
-        // 明确使用和菜单正文相同的“可排版内容宽度”。
+        textView.textContainer?.widthTracksTextView = true
         textView.textContainer?.containerSize = NSSize(
             width: dailyGuidanceMenuWidth - dailyGuidanceHorizontalPadding * 2,
             height: CGFloat.greatestFiniteMagnitude
@@ -1585,11 +1607,34 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         textView.insertionPointColor = dailyGuidanceColor
         textView.setSelectedRange(NSRange(location: textView.string.utf16.count, length: 0))
         scrollView.documentView = textView
-        alert.accessoryView = scrollView
+
+        let contentView = NSView()
+        window.contentView = contentView
+        for view in [infoLabel, scrollView, saveButton, cancelButton] {
+            view.translatesAutoresizingMaskIntoConstraints = false
+            contentView.addSubview(view)
+        }
+        NSLayoutConstraint.activate([
+            infoLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
+            infoLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
+            infoLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -24),
+            scrollView.topAnchor.constraint(equalTo: infoLabel.bottomAnchor, constant: 14),
+            scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
+            scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            cancelButton.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: 16),
+            cancelButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            cancelButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20),
+            saveButton.centerYAnchor.constraint(equalTo: cancelButton.centerYAnchor),
+            saveButton.trailingAnchor.constraint(equalTo: cancelButton.leadingAnchor, constant: -12)
+        ])
 
         NSApp.activate(ignoringOtherApps: true)
-        alert.window.initialFirstResponder = textView
-        guard alert.runModal() == .alertFirstButtonReturn else {
+        window.makeKeyAndOrderFront(nil)
+        window.makeFirstResponder(textView)
+        let response = NSApp.runModal(for: window)
+        window.delegate = nil
+        window.close()
+        guard response == .OK else {
             return
         }
 
@@ -1610,6 +1655,18 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
 
         rebuildMenu()
+    }
+
+    @objc private func saveDailyGuidanceEditor(_ sender: NSButton) {
+        NSApp.stopModal(withCode: .OK)
+    }
+
+    @objc private func cancelDailyGuidanceEditor(_ sender: NSButton) {
+        NSApp.stopModal(withCode: .cancel)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        NSApp.stopModal(withCode: .cancel)
     }
 
     /// 保存失败时显示不会自动关闭或覆盖数据的明确提示。
