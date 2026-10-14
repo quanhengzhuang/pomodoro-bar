@@ -144,6 +144,42 @@ final class TripStore: ObservableObject {
         return id
     }
 
+    func createTrip(title: String, from items: [PhotosPickerItem]) throws -> (id: UUID?, result: ImportResult) {
+        var assets: [PHAsset] = []
+        for item in items {
+            guard let identifier = item.itemIdentifier,
+                  let asset = PHAsset.fetchAssets(withLocalIdentifiers: [identifier], options: nil).firstObject else {
+                continue
+            }
+            assets.append(asset)
+        }
+        return try createTrip(title: title, from: assets, failedSelections: items.count - assets.count)
+    }
+
+    func createTrip(title: String, from assets: [PHAsset],
+                    failedSelections: Int = 0) throws -> (id: UUID?, result: ImportResult) {
+        var result = ImportResult()
+        result.failed = failedSelections
+        let points = assets.compactMap { asset -> PhotoPoint? in
+            guard asset.mediaType == .image else {
+                result.failed += 1
+                return nil
+            }
+            let point = makePoint(for: asset)
+            if point.capturedAt == nil { result.missingTimes += 1 }
+            result.imported += 1
+            return point
+        }
+        guard !points.isEmpty else { return (nil, result) }
+
+        let id = UUID()
+        var updated = trips
+        updated.insert(Trip(id: id, title: title.trimmingCharacters(in: .whitespacesAndNewlines),
+                            createdAt: Date(), points: points), at: 0)
+        try persist(updated)
+        return (id, result)
+    }
+
     func renameTrip(id: UUID, title: String) throws {
         var updated = trips
         guard let index = updated.firstIndex(where: { $0.id == id }) else { throw TripStoreError.missingTrip }
@@ -343,14 +379,19 @@ final class TripStore: ObservableObject {
         guard let index = updated.firstIndex(where: { $0.id == tripID }) else {
             throw TripStoreError.missingTrip
         }
+        let point = makePoint(for: asset)
+        updated[index].points.append(point)
+        try persist(updated)
+        return point.capturedAt == nil
+    }
+
+    private func makePoint(for asset: PHAsset) -> PhotoPoint {
         var point = PhotoPoint(id: UUID(), originalName: "", thumbnailName: "",
                                capturedAt: asset.creationDate, note: "", addedAt: Date())
         point.assetIdentifier = asset.localIdentifier
         point.latitude = asset.location?.coordinate.latitude
         point.longitude = asset.location?.coordinate.longitude
-        updated[index].points.append(point)
-        try persist(updated)
-        return point.capturedAt == nil
+        return point
     }
 
     private func persist(_ updated: [Trip]) throws {

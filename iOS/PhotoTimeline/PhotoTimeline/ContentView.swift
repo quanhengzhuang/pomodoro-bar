@@ -92,9 +92,14 @@ private struct AppAlert: Identifiable {
 
 struct ContentView: View {
     @EnvironmentObject private var store: TripStore
-    @State private var showingNewTrip = false
-    @State private var newTitle = ""
+    @State private var showingPhotoPicker = false
+    @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var alert: AppAlert?
+
+    private let suggestedTitles = [
+        "一路向前", "出发去看看", "今天在路上", "沿途风景", "城市漫步",
+        "周末出走", "下一站快乐", "好天气出发", "旅途拾光", "去看世界"
+    ]
 
     var body: some View {
         NavigationStack {
@@ -120,7 +125,19 @@ struct ContentView: View {
             .background(Palette.paper.ignoresSafeArea())
             .navigationDestination(for: UUID.self) { TripDetailView(tripID: $0) }
             .toolbar(.hidden, for: .navigationBar)
-            .sheet(isPresented: $showingNewTrip) { newTripSheet }
+            .sheet(isPresented: $showingPhotoPicker) {
+                DatePhotoPicker(initialDate: Date(), systemSelection: $selectedPhotos,
+                                title: "选择照片", confirmationVerb: "保存") { assets in
+                    showingPhotoPicker = false
+                    createTrip(from: assets)
+                }
+            }
+            .onChange(of: selectedPhotos) { items in
+                guard !items.isEmpty else { return }
+                showingPhotoPicker = false
+                selectedPhotos = []
+                createTrip(from: items)
+            }
             .alert(item: $alert) { value in
                 Alert(title: Text(value.title), message: Text(value.message),
                       dismissButton: .default(Text("知道了")))
@@ -142,8 +159,7 @@ struct ContentView: View {
                     .foregroundStyle(Palette.ink)
                 Spacer()
                 Button {
-                    newTitle = ""
-                    showingNewTrip = true
+                    showingPhotoPicker = true
                 } label: {
                     Image(systemName: "plus")
                         .font(.headline)
@@ -151,7 +167,7 @@ struct ContentView: View {
                         .frame(width: 44, height: 44)
                         .background(Palette.coral, in: Circle())
                 }
-                .accessibilityLabel("新建行程")
+                .accessibilityLabel("选择照片创建行程")
             }
             Text("从照片出发，记下每一站的时间。")
                 .font(.subheadline)
@@ -172,15 +188,14 @@ struct ContentView: View {
             Image(systemName: "photo.on.rectangle.angled")
                 .font(.system(size: 42, weight: .light))
                 .foregroundStyle(Palette.blue)
-            Text("先创建一段行程")
+            Text("从照片开始一段行程")
                 .font(.system(size: 25, weight: .semibold))
                 .foregroundStyle(Palette.ink)
-            Text("比如“周末去海边”。之后可以一次选入多张照片，时间线会按拍摄时间排好。")
+            Text("选入照片后，时间线会按拍摄时间排好，行程也会自动取一个名字。")
                 .font(.body)
                 .foregroundStyle(Palette.ink.opacity(0.7))
-            Button("创建行程") {
-                newTitle = ""
-                showingNewTrip = true
+            Button("选择照片") {
+                showingPhotoPicker = true
             }
             .buttonStyle(.borderedProminent)
             .tint(Palette.coral)
@@ -225,32 +240,35 @@ struct ContentView: View {
         .overlay(RoundedRectangle(cornerRadius: 18).stroke(Palette.mist, lineWidth: 1))
     }
 
-    private var newTripSheet: some View {
-        NavigationStack {
-            Form {
-                TextField("行程名称，例如：周末去海边", text: $newTitle)
-                    .textInputAutocapitalization(.sentences)
-            }
-            .navigationTitle("新建行程")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("取消") { showingNewTrip = false }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("创建") {
-                        do {
-                            _ = try store.addTrip(title: newTitle)
-                            showingNewTrip = false
-                        } catch {
-                            alert = AppAlert(title: "无法创建行程", message: error.localizedDescription)
-                        }
-                    }
-                    .disabled(newTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }
-            }
+    private func createTrip(from assets: [PHAsset]) {
+        do {
+            showCreationResult(try store.createTrip(title: suggestedTitles.randomElement() ?? "旅途留影", from: assets))
+        } catch {
+            alert = AppAlert(title: "无法创建行程", message: error.localizedDescription)
         }
-        .presentationDetents([.medium])
+    }
+
+    private func createTrip(from items: [PhotosPickerItem]) {
+        do {
+            showCreationResult(try store.createTrip(title: suggestedTitles.randomElement() ?? "旅途留影", from: items))
+        } catch {
+            alert = AppAlert(title: "无法创建行程", message: error.localizedDescription)
+        }
+    }
+
+    private func showCreationResult(_ creation: (id: UUID?, result: ImportResult)) {
+        guard let id = creation.id else {
+            alert = AppAlert(title: "未能添加照片", message: "请检查系统相册访问权限后重试。")
+            return
+        }
+        Task { await store.populateLocations(in: id) }
+        let result = creation.result
+        if result.failed > 0 || result.missingTimes > 0 {
+            var lines = ["已添加 \(result.imported) 张照片。"]
+            if result.missingTimes > 0 { lines.append("\(result.missingTimes) 张没有拍摄时间，会排在时间线末尾。") }
+            if result.failed > 0 { lines.append("\(result.failed) 张未能添加，请检查系统相册访问权限后重试。") }
+            alert = AppAlert(title: "导入结果", message: lines.joined(separator: "\n"))
+        }
     }
 
     private func thumbnail(for point: PhotoPoint) -> some View {
@@ -832,6 +850,8 @@ private struct TripDetailView: View {
 private struct DatePhotoPicker: View {
     @Environment(\.dismiss) private var dismiss
     @Binding var systemSelection: [PhotosPickerItem]
+    let title: String
+    let confirmationVerb: String
     let onAdd: ([PHAsset]) -> Void
 
     @State private var selectedDate: Date
@@ -840,9 +860,12 @@ private struct DatePhotoPicker: View {
     @State private var selectedIDs: Set<String> = []
 
     init(initialDate: Date, systemSelection: Binding<[PhotosPickerItem]>,
+         title: String = "按日期添加照片", confirmationVerb: String = "添加",
          onAdd: @escaping ([PHAsset]) -> Void) {
         _selectedDate = State(initialValue: initialDate)
         _systemSelection = systemSelection
+        self.title = title
+        self.confirmationVerb = confirmationVerb
         self.onAdd = onAdd
     }
 
@@ -896,14 +919,14 @@ private struct DatePhotoPicker: View {
                     .padding(.bottom, 12)
                 }
             }
-            .navigationTitle("按日期添加照片")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("添加 \(selectedIDs.count) 张") {
+                    Button("\(confirmationVerb) \(selectedIDs.count) 张") {
                         onAdd(assets.filter { selectedIDs.contains($0.localIdentifier) })
                     }
                     .disabled(selectedIDs.isEmpty)
