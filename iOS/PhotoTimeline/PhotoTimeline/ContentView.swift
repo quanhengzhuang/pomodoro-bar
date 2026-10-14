@@ -264,6 +264,7 @@ private struct TripDetailView: View {
     let tripID: UUID
 
     @AppStorage("photoTimelineCompactMode") private var compactMode = false
+    @AppStorage("photoTimelinePlaceDisplayMode") private var placeDisplayMode = PlaceDisplayMode.cityVenue.rawValue
     @State private var selectedPhotos: [PhotosPickerItem] = []
     @State private var showingDatePicker = false
     @State private var importing = false
@@ -293,6 +294,9 @@ private struct TripDetailView: View {
     private var totalDatedDays: Int { max(datedDays.count, 1) }
     private var hasMissingTimes: Bool { sortedPoints.contains { $0.capturedAt == nil } }
     private var legacyPhotoCount: Int { sortedPoints.filter { $0.assetIdentifier == nil }.count }
+    private var selectedPlaceMode: PlaceDisplayMode {
+        PlaceDisplayMode(rawValue: placeDisplayMode) ?? .cityVenue
+    }
     private static let cardTimeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "zh_CN")
@@ -373,17 +377,22 @@ private struct TripDetailView: View {
                 }
             }
             .toolbar {
-                if legacyPhotoCount > 0 {
-                    ToolbarItem(placement: .navigationBarTrailing) {
-                        Menu {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Menu {
+                        Picker("地点显示", selection: $placeDisplayMode) {
+                            Text("城市＋地点").tag(PlaceDisplayMode.cityVenue.rawValue)
+                            Text("城市＋区名").tag(PlaceDisplayMode.cityDistrict.rawValue)
+                            Text("不显示").tag(PlaceDisplayMode.hidden.rawValue)
+                        }
+                        if legacyPhotoCount > 0 {
                             Button("移除旧版照片（\(legacyPhotoCount) 张）", role: .destructive) {
                                 showingLegacyDelete = true
                             }
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
                         }
-                        .accessibilityLabel("旧版照片管理")
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
+                    .accessibilityLabel("显示设置与照片管理")
                 }
                 if !sortedPoints.isEmpty {
                     ToolbarItem(placement: .navigationBarTrailing) {
@@ -813,7 +822,8 @@ private struct TripDetailView: View {
     }
 
     private func displayPlace(for point: PhotoPoint) -> String? {
-        guard let name = point.placeName?.trimmingCharacters(in: .whitespacesAndNewlines),
+        guard let name = point.displayPlace(mode: selectedPlaceMode)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
               !name.isEmpty else { return nil }
         return name
     }
@@ -971,6 +981,7 @@ private struct DatePhotoTile: View {
 private struct PointEditor: View {
     @EnvironmentObject private var store: TripStore
     @Environment(\.dismiss) private var dismiss
+    @AppStorage("photoTimelinePlaceDisplayMode") private var placeDisplayMode = PlaceDisplayMode.cityVenue.rawValue
     let tripID: UUID
     let point: PhotoPoint
 
@@ -995,7 +1006,8 @@ private struct PointEditor: View {
     }
 
     private var displayedPlaceName: String {
-        let name = currentPoint.placeName?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let mode = PlaceDisplayMode(rawValue: placeDisplayMode) ?? .cityVenue
+        let name = currentPoint.displayPlace(mode: mode)?.trimmingCharacters(in: .whitespacesAndNewlines)
         return name.flatMap { $0.isEmpty ? nil : $0 } ?? "无地点信息"
     }
 
@@ -1047,17 +1059,19 @@ private struct PointEditor: View {
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.trailing)
                     }
-                    HStack {
-                        Text("地点")
-                        Spacer()
-                        Text(displayedPlaceName)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.trailing)
-                    }
-                    if let latitude = currentPoint.latitude, let longitude = currentPoint.longitude {
-                        Text(String(format: "GPS：%.4f, %.4f", latitude, longitude))
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
+                    if placeDisplayMode != PlaceDisplayMode.hidden.rawValue {
+                        HStack {
+                            Text("地点")
+                            Spacer()
+                            Text(displayedPlaceName)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.trailing)
+                        }
+                        if let latitude = currentPoint.latitude, let longitude = currentPoint.longitude {
+                            Text(String(format: "GPS：%.4f, %.4f", latitude, longitude))
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
                     }
                 }
                 Section("备注") {

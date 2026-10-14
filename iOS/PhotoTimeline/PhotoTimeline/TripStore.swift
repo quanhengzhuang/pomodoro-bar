@@ -27,6 +27,27 @@ struct PhotoPoint: Codable, Identifiable {
     var placeName: String? = nil
     var placeLookupVersion: Int? = nil
     var assetIdentifier: String? = nil
+    var placeCity: String? = nil
+    var placeDistrict: String? = nil
+    var placeVenue: String? = nil
+
+    func displayPlace(mode: PlaceDisplayMode) -> String? {
+        guard mode != .hidden else { return nil }
+        let city = placeCity?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let detail = (mode == .cityVenue ? placeVenue ?? placeDistrict : placeDistrict)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let parts = [city, detail].compactMap { $0 }.filter { !$0.isEmpty }
+        if !parts.isEmpty {
+            return parts.count == 2 && parts[0] == parts[1] ? parts[0] : parts.joined(separator: " · ")
+        }
+        return mode == .cityVenue ? placeName : nil
+    }
+}
+
+enum PlaceDisplayMode: String {
+    case cityVenue
+    case cityDistrict
+    case hidden
 }
 
 struct ImportResult {
@@ -165,7 +186,7 @@ final class TripStore: ObservableObject {
             }
 
             if let current = trip(id: tripID)?.points.first(where: { $0.id == pointID }),
-               current.placeLookupVersion != 1,
+               current.placeLookupVersion != 2,
                let latitude = current.latitude, let longitude = current.longitude {
                 let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
                 if CLLocationCoordinate2DIsValid(coordinate) {
@@ -204,7 +225,15 @@ final class TripStore: ObservableObject {
         if oldName == nil || oldName == previousAutomaticName {
             updated[tripIndex].points[pointIndex].placeName = resolvedName
         }
-        updated[tripIndex].points[pointIndex].placeLookupVersion = 1
+        updated[tripIndex].points[pointIndex].placeCity = placemark.locality
+            ?? placemark.subAdministrativeArea ?? placemark.administrativeArea
+        updated[tripIndex].points[pointIndex].placeDistrict = placemark.subLocality
+        updated[tripIndex].points[pointIndex].placeVenue = oldName != nil
+            && oldName != previousAutomaticName && oldName != resolvedName
+            ? oldName : placemark.areasOfInterest?.first(where: {
+                !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            })
+        updated[tripIndex].points[pointIndex].placeLookupVersion = 2
         try persist(updated)
     }
 
