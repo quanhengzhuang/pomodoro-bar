@@ -1,6 +1,7 @@
 import Foundation
 import CoreLocation
 import ImageIO
+import Photos
 import PhotosUI
 import SwiftUI
 import UniformTypeIdentifiers
@@ -235,38 +236,74 @@ final class TripStore: ObservableObject {
                 guard let data = try await item.loadTransferable(type: Data.self) else {
                     throw TripStoreError.noImage
                 }
-                let image = try PhotoMetadata.read(data)
-                let id = UUID()
-                let originalName = "\(id.uuidString).\(image.fileExtension)"
-                let thumbnailName = "\(id.uuidString).jpg"
-                let originalURL = originalsURL.appendingPathComponent(originalName)
-                let thumbnailURL = thumbnailsURL.appendingPathComponent(thumbnailName)
-                do {
-                    try data.write(to: originalURL, options: .atomic)
-                    try image.thumbnail.write(to: thumbnailURL, options: .atomic)
-                    var updated = trips
-                    guard let index = updated.firstIndex(where: { $0.id == tripID }) else {
-                        throw TripStoreError.missingTrip
-                    }
-                    var point = PhotoPoint(id: id, originalName: originalName,
-                        thumbnailName: thumbnailName, capturedAt: image.capturedAt,
-                        note: "", addedAt: Date())
-                    point.latitude = image.coordinate?.latitude
-                    point.longitude = image.coordinate?.longitude
-                    updated[index].points.append(point)
-                    try persist(updated)
-                    result.imported += 1
-                    if image.capturedAt == nil { result.missingTimes += 1 }
-                } catch {
-                    try? FileManager.default.removeItem(at: originalURL)
-                    try? FileManager.default.removeItem(at: thumbnailURL)
-                    throw error
-                }
+                if try importPhoto(data, into: tripID) { result.missingTimes += 1 }
+                result.imported += 1
             } catch {
                 result.failed += 1
             }
         }
         return result
+    }
+
+    func importPhotos(_ assets: [PHAsset], into tripID: UUID) async -> ImportResult {
+        var result = ImportResult()
+        for asset in assets {
+            do {
+                guard let data = await Self.imageData(for: asset) else { throw TripStoreError.noImage }
+                if try importPhoto(data, into: tripID, capturedAt: asset.creationDate,
+                                   coordinate: asset.location?.coordinate) {
+                    result.missingTimes += 1
+                }
+                result.imported += 1
+            } catch {
+                result.failed += 1
+            }
+        }
+        return result
+    }
+
+    private static func imageData(for asset: PHAsset) async -> Data? {
+        await withCheckedContinuation { continuation in
+            let options = PHImageRequestOptions()
+            options.version = .original
+            options.deliveryMode = .highQualityFormat
+            options.isNetworkAccessAllowed = true
+            PHImageManager.default().requestImageDataAndOrientation(for: asset, options: options) {
+                data, _, _, _ in
+                continuation.resume(returning: data)
+            }
+        }
+    }
+
+    private func importPhoto(_ data: Data, into tripID: UUID, capturedAt: Date? = nil,
+                             coordinate: CLLocationCoordinate2D? = nil) throws -> Bool {
+        let image = try PhotoMetadata.read(data)
+        let id = UUID()
+        let originalName = "\(id.uuidString).\(image.fileExtension)"
+        let thumbnailName = "\(id.uuidString).jpg"
+        let originalURL = originalsURL.appendingPathComponent(originalName)
+        let thumbnailURL = thumbnailsURL.appendingPathComponent(thumbnailName)
+        do {
+            try data.write(to: originalURL, options: .atomic)
+            try image.thumbnail.write(to: thumbnailURL, options: .atomic)
+            var updated = trips
+            guard let index = updated.firstIndex(where: { $0.id == tripID }) else {
+                throw TripStoreError.missingTrip
+            }
+            let date = capturedAt ?? image.capturedAt
+            var point = PhotoPoint(id: id, originalName: originalName,
+                thumbnailName: thumbnailName, capturedAt: date,
+                note: "", addedAt: Date())
+            point.latitude = (image.coordinate ?? coordinate)?.latitude
+            point.longitude = (image.coordinate ?? coordinate)?.longitude
+            updated[index].points.append(point)
+            try persist(updated)
+            return date == nil
+        } catch {
+            try? FileManager.default.removeItem(at: originalURL)
+            try? FileManager.default.removeItem(at: thumbnailURL)
+            throw error
+        }
     }
 
     private func persist(_ updated: [Trip]) throws {

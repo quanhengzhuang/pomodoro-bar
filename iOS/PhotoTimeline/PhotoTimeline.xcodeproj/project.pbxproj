@@ -192,6 +192,7 @@
 				DEVELOPMENT_TEAM = FC6L2N43X9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "旅途留影";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "按日期查找并导入旅途照片。";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
@@ -219,6 +220,7 @@
 				DEVELOPMENT_TEAM = FC6L2N43X9;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = "旅途留影";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "按日期查找并导入旅途照片。";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.travel";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;

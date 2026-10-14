@@ -1,4 +1,5 @@
 import SwiftUI
+import Photos
 import PhotosUI
 import CoreLocation
 
@@ -243,6 +244,7 @@ private struct TripDetailView: View {
 
     @AppStorage("photoTimelineCompactMode") private var compactMode = false
     @State private var selectedPhotos: [PhotosPickerItem] = []
+    @State private var showingDatePicker = false
     @State private var importing = false
     @State private var editingPoint: PhotoPoint?
     @State private var showingRename = false
@@ -300,8 +302,9 @@ private struct TripDetailView: View {
                             .accessibilityLabel("修改行程名称")
                         }
 
-                        PhotosPicker(selection: $selectedPhotos, matching: .images,
-                                     preferredItemEncoding: .current) {
+                        Button {
+                            showingDatePicker = true
+                        } label: {
                             HStack {
                                 Image(systemName: "plus")
                                 Text(importing ? "正在导入…" : "添加照片")
@@ -371,17 +374,21 @@ private struct TripDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: selectedPhotos) { items in
             guard !items.isEmpty else { return }
+            showingDatePicker = false
             importing = true
             Task {
                 let result = await store.importPhotos(items, into: tripID)
                 selectedPhotos = []
-                importing = false
-                Task { await store.populateLocations(in: tripID) }
-                if result.failed > 0 || result.missingTimes > 0 {
-                    var lines = ["已导入 \(result.imported) 张照片。"]
-                    if result.missingTimes > 0 { lines.append("\(result.missingTimes) 张没有拍摄时间，请在时间点中补录。") }
-                    if result.failed > 0 { lines.append("\(result.failed) 张未能导入，请确认照片已下载到本机后重试。") }
-                    alert = AppAlert(title: "导入结果", message: lines.joined(separator: "\n"))
+                finishImport(result)
+            }
+        }
+        .sheet(isPresented: $showingDatePicker) {
+            DatePhotoPicker(initialDate: datedDays.last ?? Date(), systemSelection: $selectedPhotos) { assets in
+                showingDatePicker = false
+                importing = true
+                Task {
+                    let result = await store.importPhotos(assets, into: tripID)
+                    finishImport(result)
                 }
             }
         }
@@ -394,6 +401,17 @@ private struct TripDetailView: View {
                   dismissButton: .default(Text("知道了")))
         }
         .task { await store.populateLocations(in: tripID) }
+    }
+
+    private func finishImport(_ result: ImportResult) {
+        importing = false
+        Task { await store.populateLocations(in: tripID) }
+        if result.failed > 0 || result.missingTimes > 0 {
+            var lines = ["已导入 \(result.imported) 张照片。"]
+            if result.missingTimes > 0 { lines.append("\(result.missingTimes) 张没有拍摄时间，请在时间点中补录。") }
+            if result.failed > 0 { lines.append("\(result.failed) 张未能导入，请确认照片已下载到本机后重试。") }
+            alert = AppAlert(title: "导入结果", message: lines.joined(separator: "\n"))
+        }
     }
 
     private var emptyTimeline: some View {
@@ -752,6 +770,153 @@ private struct TripDetailView: View {
         guard let name = point.placeName?.trimmingCharacters(in: .whitespacesAndNewlines),
               !name.isEmpty else { return nil }
         return name
+    }
+}
+
+private struct DatePhotoPicker: View {
+    @Environment(\.dismiss) private var dismiss
+    @Binding var systemSelection: [PhotosPickerItem]
+    let onAdd: ([PHAsset]) -> Void
+
+    @State private var selectedDate: Date
+    @State private var authorization = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+    @State private var assets: [PHAsset] = []
+    @State private var selectedIDs: Set<String> = []
+
+    init(initialDate: Date, systemSelection: Binding<[PhotosPickerItem]>,
+         onAdd: @escaping ([PHAsset]) -> Void) {
+        _selectedDate = State(initialValue: initialDate)
+        _systemSelection = systemSelection
+        self.onAdd = onAdd
+    }
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 12) {
+                DatePicker("拍摄日期", selection: $selectedDate, displayedComponents: .date)
+                    .datePickerStyle(.graphical)
+                    .padding(.horizontal)
+
+                if authorization == .authorized || authorization == .limited {
+                    if authorization == .limited {
+                        Text("当前仅显示允许访问的照片。也可以浏览全部照片。")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
+                    if assets.isEmpty {
+                        Label("这一天没有可访问的照片", systemImage: "calendar.badge.exclamationmark")
+                            .foregroundStyle(.secondary)
+                            .frame(maxHeight: .infinity)
+                    } else {
+                        ScrollView {
+                            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 4), spacing: 4) {
+                                ForEach(assets, id: \.localIdentifier) { asset in
+                                    Button {
+                                        if !selectedIDs.insert(asset.localIdentifier).inserted {
+                                            selectedIDs.remove(asset.localIdentifier)
+                                        }
+                                    } label: {
+                                        DatePhotoTile(asset: asset, selected: selectedIDs.contains(asset.localIdentifier))
+                                    }
+                                    .buttonStyle(.plain)
+                                    .accessibilityLabel(asset.creationDate?.formatted(date: .omitted, time: .shortened) ?? "照片")
+                                    .accessibilityAddTraits(selectedIDs.contains(asset.localIdentifier) ? .isSelected : [])
+                                }
+                            }
+                            .padding(.horizontal)
+                        }
+                    }
+                } else {
+                    Label("允许访问照片后可按日期查找", systemImage: "photo.on.rectangle.angled")
+                        .foregroundStyle(.secondary)
+                        .frame(maxHeight: .infinity)
+                }
+
+                PhotosPicker(selection: $systemSelection, matching: .images,
+                             preferredItemEncoding: .current) {
+                    Label("浏览全部照片", systemImage: "photo.on.rectangle")
+                }
+                .padding(.bottom, 12)
+            }
+            .navigationTitle("按日期添加照片")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("添加 \(selectedIDs.count) 张") {
+                        onAdd(assets.filter { selectedIDs.contains($0.localIdentifier) })
+                    }
+                    .disabled(selectedIDs.isEmpty)
+                }
+            }
+            .task {
+                if authorization == .notDetermined {
+                    authorization = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+                }
+                loadAssets()
+            }
+            .onChange(of: selectedDate) { _ in loadAssets() }
+        }
+    }
+
+    private func loadAssets() {
+        selectedIDs.removeAll()
+        guard authorization == .authorized || authorization == .limited,
+              let interval = Calendar.current.dateInterval(of: .day, for: selectedDate) else {
+            assets = []
+            return
+        }
+        let options = PHFetchOptions()
+        options.predicate = NSPredicate(format: "creationDate >= %@ AND creationDate < %@",
+                                        interval.start as NSDate, interval.end as NSDate)
+        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+        let result = PHAsset.fetchAssets(with: .image, options: options)
+        var found: [PHAsset] = []
+        result.enumerateObjects { asset, _, _ in found.append(asset) }
+        assets = found
+    }
+}
+
+private struct DatePhotoTile: View {
+    let asset: PHAsset
+    let selected: Bool
+    @State private var image: UIImage?
+
+    var body: some View {
+        GeometryReader { proxy in
+            Group {
+                if let image {
+                    Image(uiImage: image).resizable().scaledToFill()
+                } else {
+                    Rectangle().fill(Palette.mist)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: selected ? "checkmark.circle.fill" : "circle")
+                    .font(.title3)
+                    .foregroundStyle(selected ? Palette.coral : .white)
+                    .shadow(radius: 2)
+                    .padding(5)
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .task(id: asset.localIdentifier) {
+            image = await withCheckedContinuation { continuation in
+                let options = PHImageRequestOptions()
+                options.deliveryMode = .highQualityFormat
+                options.resizeMode = .fast
+                options.isNetworkAccessAllowed = true
+                PHImageManager.default().requestImage(for: asset,
+                    targetSize: CGSize(width: 240, height: 240), contentMode: .aspectFill,
+                    options: options) { image, _ in
+                    continuation.resume(returning: image)
+                }
+            }
+        }
     }
 }
 
