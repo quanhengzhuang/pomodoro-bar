@@ -163,6 +163,16 @@ final class TripStore: ObservableObject {
         }
     }
 
+    func suggestedPlaceName(for point: PhotoPoint) async -> String? {
+        guard let latitude = point.latitude, let longitude = point.longitude else { return nil }
+        let coordinate = CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
+        guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
+        let location = CLLocation(latitude: latitude, longitude: longitude)
+        guard let placemark = try? await CLGeocoder().reverseGeocodeLocation(
+            location, preferredLocale: Locale(identifier: "zh_CN")).first else { return nil }
+        return Self.placeName(from: placemark)
+    }
+
     private func updateLocation(tripID: UUID, pointID: UUID,
                                 coordinate: CLLocationCoordinate2D? = nil,
                                 placeName: String? = nil) throws {
@@ -181,6 +191,11 @@ final class TripStore: ObservableObject {
     }
 
     private static func placeName(from placemark: CLPlacemark) -> String? {
+        if let interest = placemark.areasOfInterest?.first(where: {
+            !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        }) {
+            return interest
+        }
         let parts = [placemark.locality ?? placemark.administrativeArea,
                      placemark.subLocality]
             .compactMap { $0 }

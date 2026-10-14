@@ -929,6 +929,7 @@ private struct PointEditor: View {
     @State private var note: String
     @State private var placeName: String
     @State private var placeEdited = false
+    @State private var isRecognizingPlace = false
     @State private var hasTime: Bool
     @State private var capturedAt: Date
     @State private var framingX: Double
@@ -997,8 +998,27 @@ private struct PointEditor: View {
                     }
                 }
                 Section("地点或备注") {
-                    TextField("拍摄地点", text: $placeName)
-                        .onChange(of: placeName) { _ in placeEdited = true }
+                    HStack {
+                        TextField("拍摄地点", text: $placeName)
+                            .onChange(of: placeName) { _ in placeEdited = true }
+                        if point.latitude != nil, point.longitude != nil {
+                            Button(isRecognizingPlace ? "识别中…" : "重新识别") {
+                                isRecognizingPlace = true
+                                Task {
+                                    let name = await store.suggestedPlaceName(for: point)
+                                    isRecognizingPlace = false
+                                    if let name {
+                                        placeName = name
+                                        placeEdited = true
+                                    } else {
+                                        alert = AppAlert(title: "无法识别地点",
+                                                         message: "请检查网络连接，或手动填写地点。")
+                                    }
+                                }
+                            }
+                            .disabled(isRecognizingPlace)
+                        }
+                    }
                     if let latitude = point.latitude, let longitude = point.longitude {
                         Text(String(format: "GPS：%.4f, %.4f", latitude, longitude))
                             .font(.footnote)
@@ -1036,6 +1056,7 @@ private struct PointEditor: View {
                             alert = AppAlert(title: "无法保存", message: error.localizedDescription)
                         }
                     }
+                    .disabled(isRecognizingPlace)
                 }
             }
             .alert(item: $alert) { value in
