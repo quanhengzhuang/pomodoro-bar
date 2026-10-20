@@ -858,7 +858,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
     // MARK: - 记录菜单
 
-    /// 构建今日摘要、今日记录、最近 30 天历史、今日指引历史和打开文件入口。
+    /// 构建今日摘要、今日记录、今日指引历史和最近 30 天专注历史。
     private func addRecordsMenuItems() {
         let today = recordDateFormatter.string(from: Date())
         let insideItem = NSMenuItem(title: "番茄内时间：\(formattedPomodoroTimeToday())", action: nil, keyEquivalent: "")
@@ -929,9 +929,8 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         openRecordsItem.target = self
         historyMenu.addItem(openRecordsItem)
         historyItem.submenu = historyMenu
-        menu.addItem(historyItem)
-
         addDailyGuidanceHistoryMenuItem()
+        menu.addItem(historyItem)
     }
 
     /// 添加最近 30 个自然日内非空的今日指引历史子菜单。
