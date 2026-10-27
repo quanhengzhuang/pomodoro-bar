@@ -1559,10 +1559,14 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         window.center()
 
         let weekday = historyWeekdayFormatter.string(from: Date())
-        let infoLabel = NSTextField(labelWithString: "\(todayDateKey) \(weekday) · 支持换行；保存空内容可清除。")
-        let saveButton = NSButton(title: "保存", target: self, action: #selector(saveDailyGuidanceEditor(_:)))
-        let cancelButton = NSButton(title: "取消", target: self, action: #selector(cancelDailyGuidanceEditor(_:)))
-        cancelButton.keyEquivalent = "\u{1b}"
+        let dateLabel = NSTextField(labelWithString: "\(todayDateKey) \(weekday)")
+        dateLabel.textColor = .secondaryLabelColor
+        let saveButton = NSButton(title: "保存  ⌘S", target: self, action: #selector(saveDailyGuidanceEditor(_:)))
+        saveButton.keyEquivalent = "s"
+        saveButton.keyEquivalentModifierMask = [.command]
+        let closeButton = NSButton(title: "关闭  Esc", target: self, action: #selector(closeDailyGuidanceEditor(_:)))
+        closeButton.keyEquivalent = "\u{1b}"
+        closeButton.keyEquivalentModifierMask = []
 
         let scrollView = NSScrollView(frame: NSRect(x: 0, y: 0, width: dailyGuidanceMenuWidth, height: 220))
         scrollView.borderType = .noBorder
@@ -1609,22 +1613,22 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
 
         let contentView = NSView()
         window.contentView = contentView
-        for view in [infoLabel, scrollView, saveButton, cancelButton] {
+        for view in [dateLabel, scrollView, saveButton, closeButton] {
             view.translatesAutoresizingMaskIntoConstraints = false
             contentView.addSubview(view)
         }
         NSLayoutConstraint.activate([
-            infoLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
-            infoLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
-            infoLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -24),
-            scrollView.topAnchor.constraint(equalTo: infoLabel.bottomAnchor, constant: 14),
+            dateLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
+            dateLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
+            dateLabel.trailingAnchor.constraint(lessThanOrEqualTo: contentView.trailingAnchor, constant: -24),
+            scrollView.topAnchor.constraint(equalTo: dateLabel.bottomAnchor, constant: 14),
             scrollView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 24),
             scrollView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-            cancelButton.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: 16),
-            cancelButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
-            cancelButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20),
-            saveButton.centerYAnchor.constraint(equalTo: cancelButton.centerYAnchor),
-            saveButton.trailingAnchor.constraint(equalTo: cancelButton.leadingAnchor, constant: -12)
+            closeButton.topAnchor.constraint(equalTo: scrollView.bottomAnchor, constant: 16),
+            closeButton.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -24),
+            closeButton.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20),
+            saveButton.centerYAnchor.constraint(equalTo: closeButton.centerYAnchor),
+            saveButton.trailingAnchor.constraint(equalTo: closeButton.leadingAnchor, constant: -12)
         ])
 
         NSApp.activate(ignoringOtherApps: true)
@@ -1660,7 +1664,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         NSApp.stopModal(withCode: .OK)
     }
 
-    @objc private func cancelDailyGuidanceEditor(_ sender: NSButton) {
+    @objc private func closeDailyGuidanceEditor(_ sender: NSButton) {
         NSApp.stopModal(withCode: .cancel)
     }
 
