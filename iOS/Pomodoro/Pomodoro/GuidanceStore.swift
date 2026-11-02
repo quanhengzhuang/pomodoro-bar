@@ -51,6 +51,7 @@ final class GuidanceStore: ObservableObject {
     @Published private(set) var historyEntries: [GuidanceHistoryEntry] = []
     /// 保存失败时由 SwiftUI 绑定为 Alert；保存成功或用户关闭后清空。
     @Published private(set) var saveErrorMessage: String?
+    @Published private(set) var activityEvents: [GuidanceActivityEvent] = []
 
     // MARK: - 文件授权与日期工具
 
@@ -58,6 +59,12 @@ final class GuidanceStore: ObservableObject {
     private let bookmarkStorageKey = "daily-guidance-file-bookmark"
     /// 从书签恢复出的文件 URL。仅保存普通 URL 不足以跨启动访问沙盒外文件。
     private var selectedFileURL: URL?
+    /// 活动只写本机 App 容器，不需要对用户选定的 iCloud JSON 增加字段。
+    private var activityLog: GuidanceActivityLog {
+        GuidanceActivityLog(url: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("PomodoroBar", isDirectory: true)
+            .appendingPathComponent("guidance-activity.json"))
+    }
     /// JSON key 必须稳定为公历 `yyyy-MM-dd`，不能受用户语言或 12/24 小时设置影响。
     private lazy var dateKeyFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -76,7 +83,35 @@ final class GuidanceStore: ObservableObject {
 
     init() {
         // 初始化即恢复书签，让用户不必每次启动都重新选择 iCloud 文件。
+        loadActivity()
         restoreSelectedFile()
+    }
+
+    func activityHours(on dateKey: String) -> [GuidanceActivityKind?] {
+        GuidanceActivityLog.hours(on: dateKey, from: activityEvents)
+    }
+
+    /// 只有真正进入指引页面才计一次，返回前台或手动刷新不计入。
+    func recordOpened() {
+        guard hasSelectedFile else { return }
+        recordActivity(.opened)
+    }
+
+    private func loadActivity() {
+        do {
+            activityEvents = try activityLog.load()
+        } catch {
+            activityEvents = []
+            NSLog("Could not read guidance activity log (left unchanged): \(error.localizedDescription)")
+        }
+    }
+
+    private func recordActivity(_ kind: GuidanceActivityKind) {
+        do {
+            activityEvents = try activityLog.append(kind)
+        } catch {
+            NSLog("Could not save guidance activity log (left unchanged): \(error.localizedDescription)")
+        }
     }
 
     // MARK: - 文件选择与读取
@@ -107,6 +142,7 @@ final class GuidanceStore: ObservableObject {
     ///
     /// Mac 端或另一台设备可能通过 iCloud 修改同一文件，所以每次 App 回到前台也会调用。
     func refresh() {
+        loadActivity()
         guard let selectedFileURL else {
             todayGuidance = ""
             historyEntries = []
@@ -156,12 +192,14 @@ final class GuidanceStore: ObservableObject {
         }
 
         do {
-            let guidanceByDate = try withSecurityScopedAccess(to: selectedFileURL) {
+            let (guidanceByDate, didChange) = try withSecurityScopedAccess(to: selectedFileURL) {
                 // 在授权范围内完成“读-改-写”全过程。
                 let data = try Data(contentsOf: selectedFileURL)
                 var values = try JSONDecoder().decode([String: String].self, from: data)
                 // 只裁掉首尾空白；正文中的换行和缩进保持不变。
-                values[dateKey] = guidance.trimmingCharacters(in: .whitespacesAndNewlines)
+                let updatedText = guidance.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard (values[dateKey] ?? "") != updatedText else { return (values, false) }
+                values[dateKey] = updatedText
 
                 let encoder = JSONEncoder()
                 // 可读、稳定排序的 JSON 便于用户手工检查，也减少无意义的 diff。
@@ -170,11 +208,12 @@ final class GuidanceStore: ObservableObject {
                 updatedData.append(0x0A)
                 // 原子写入会先生成临时文件再替换，降低中途失败留下半份 JSON 的风险。
                 try updatedData.write(to: selectedFileURL, options: .atomic)
-                return values
+                return (values, true)
             }
 
             saveErrorMessage = nil
             apply(guidanceByDate)
+            if didChange { recordActivity(.edited) }
             return true
         } catch let error as DecodingError {
             saveErrorMessage = "数据文件格式无效：\(decodingErrorDescription(error))"

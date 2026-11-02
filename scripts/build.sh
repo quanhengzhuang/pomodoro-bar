@@ -33,6 +33,7 @@ mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
 swiftc \
   -module-cache-path "$MODULE_CACHE" \
   -framework AppKit \
+  "$ROOT_DIR/Sources/GuidanceActivityLog.swift" \
   "$ROOT_DIR/Sources/main.swift" \
   -o "$MACOS_DIR/$APP_NAME"
 

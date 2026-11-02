@@ -314,6 +314,12 @@ struct ContentView: View {
                 Text(message)
                     .foregroundStyle(.secondary)
             }
+            if showsGuidanceActivity {
+                GuidanceActivityStrip(
+                    dateKey: guidanceStore.todayDateKey,
+                    hours: guidanceStore.activityHours(on: guidanceStore.todayDateKey)
+                )
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
@@ -322,6 +328,13 @@ struct ContentView: View {
 
     private var guidanceColor: Color {
         Color.guidance(for: colorScheme)
+    }
+
+    private var showsGuidanceActivity: Bool {
+        switch guidanceStore.state {
+        case .content, .empty: return true
+        case .noFile, .loading, .error: return false
+        }
     }
 
     /// 三列摘要中复用的单元格；专注记录单元格额外作为页面入口。
@@ -560,6 +573,7 @@ private struct GuidanceSheet: View {
         }
         .onAppear {
             // Sheet 首次出现时让草稿与 Store 对齐。
+            store.recordOpened()
             draftGuidance = store.todayGuidance
             if startEditingToday && canEditGuidance {
                 beginEditing(store.todayDateKey, store.todayGuidance)
@@ -664,6 +678,8 @@ private struct GuidanceTimelineView: View {
     private var timeline: some View {
         GuidanceEntryCard(
             date: store.todayDate,
+            dateKey: store.todayDateKey,
+            activityHours: store.activityHours(on: store.todayDateKey),
             guidance: $draftGuidance,
             isEditable: false,
             isToday: true,
@@ -680,6 +696,8 @@ private struct GuidanceTimelineView: View {
             ForEach(pastEntries) { entry in
                 GuidanceEntryCard(
                     date: entry.date,
+                    dateKey: entry.dateKey,
+                    activityHours: store.activityHours(on: entry.dateKey),
                     guidance: .constant(entry.guidance),
                     isEditable: false,
                     isToday: false,
@@ -693,6 +711,8 @@ private struct GuidanceTimelineView: View {
     private func editableCard(date: Date, isToday: Bool) -> some View {
         GuidanceEntryCard(
             date: date,
+            dateKey: editingDateKey ?? store.todayDateKey,
+            activityHours: store.activityHours(on: editingDateKey ?? store.todayDateKey),
             guidance: $draftGuidance,
             isEditable: true,
             isToday: isToday,
@@ -707,6 +727,8 @@ private struct GuidanceTimelineView: View {
 /// 自动换行位置完全一致，只通过 `isEditable` 切换输入能力。
 private struct GuidanceEntryCard: View {
     let date: Date
+    let dateKey: String
+    let activityHours: [GuidanceActivityKind?]
     @Binding var guidance: String
     let isEditable: Bool
     let isToday: Bool
@@ -752,6 +774,8 @@ private struct GuidanceEntryCard: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+
+            GuidanceActivityStrip(dateKey: dateKey, hours: activityHours)
         }
         .padding(18)
         .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.card))
@@ -779,6 +803,70 @@ private struct GuidanceEntryCard: View {
         formatter.dateFormat = "yyyy年M月d日 EEEE"
         return formatter
     }()
+}
+
+/// 和指引正文共用暖黄色系，以颜色深浅区分打开与编写；没有事件的小时留空。
+private struct GuidanceActivityStrip: View {
+    let dateKey: String
+    let hours: [GuidanceActivityKind?]
+
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 12) {
+                Text("指引活动")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                legend("打开", color: guidanceColor.opacity(0.45))
+                legend("编写", color: guidanceColor)
+            }
+            HStack(spacing: 2) {
+                ForEach(0..<24, id: \.self) { hour in
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(color(for: hours[hour]))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 10)
+                        .accessibilityHidden(true)
+                }
+            }
+            HStack {
+                ForEach(["00", "06", "12", "18", "23"], id: \.self) { hour in
+                    Text(hour)
+                    if hour != "23" { Spacer(minLength: 0) }
+                }
+            }
+            .font(.system(size: 9, design: .monospaced))
+            .foregroundStyle(.secondary)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilitySummary)
+    }
+
+    private var guidanceColor: Color { Color.guidance(for: colorScheme) }
+
+    private func color(for kind: GuidanceActivityKind?) -> Color {
+        switch kind {
+        case .opened: return guidanceColor.opacity(0.45)
+        case .edited: return guidanceColor
+        case nil: return Color.secondary.opacity(0.16)
+        }
+    }
+
+    private func legend(_ title: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 2).fill(color).frame(width: 9, height: 9)
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    private var accessibilitySummary: String {
+        let active = hours.enumerated().compactMap { hour, kind -> String? in
+            guard let kind else { return nil }
+            return "\(hour)点\(kind == .edited ? "编写" : "打开")"
+        }
+        return "\(dateKey) 指引活动，\(active.isEmpty ? "无活动" : active.joined(separator: "、"))"
+    }
 }
 
 // MARK: - UIKit 文本视图桥接

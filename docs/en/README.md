@@ -20,6 +20,7 @@ A lightweight macOS menu bar Pomodoro timer.
 - Control everything from the menu bar: start, pause, resume, extend, or end while keeping progress visible
 - Press Space while the menu is open to start, pause, or resume instantly
 - Set “Daily Guidance” as multiline plain text with automatic wrapping; the editor matches the menu's 520-point width, color, font, and wrapping, and the menu retains guidance from the most recent 30 calendar days
+- See 24 hourly squares beneath today's and historical guidance: light for opens, dark for saved edits
 - Add a note to the current session and keep it with the record
 - Receive a macOS notification when a focus or break session finishes
 - Review today’s sessions with their time range, active duration, and notes
@@ -63,7 +64,7 @@ The iOS app supports a count-up timer, 25-minute focus, 5/15-minute breaks, paus
 
 On iOS 18 or later, you can also add the “Open Pomodoro” Lock Screen control: long-press the Lock Screen, choose Customize, tap a bottom control slot, then find and add Pomodoro in the control picker. Tapping it only opens the app; it does not start a timer. This control is independent of the running timer's Live Activity.
 
-The quote button in the top-right corner opens Daily Guidance with Chinese dates such as “2026年9月17日 星期四”. You can edit and save today’s entry or any non-empty historical entry from the most recent 30 calendar days; edit mode shows only the selected date’s card for a focused workspace. Editing and display states share the same warm-amber italics, font size, line spacing, padding, and wrapping width. On first use, select `iCloud Drive/PomodoroBar/daily-guidance.json` in the system file picker; saving updates only the selected date and preserves all others. iOS timer records stay in the app's own sandbox and never overwrite or delete Mac data.
+The quote button in the top-right corner opens Daily Guidance with Chinese dates such as “2026年9月17日 星期四”. You can edit and save today’s entry or any non-empty historical entry from the most recent 30 calendar days; edit mode shows only the selected date’s card for a focused workspace. Editing and display states share the same warm-amber italics, font size, line spacing, padding, and wrapping width. The home card and dated timeline cards show this device's 24-hour open/edit activity below the guidance. On first use, select `iCloud Drive/PomodoroBar/daily-guidance.json` in the system file picker; saving updates only the selected date and preserves all others. iOS timer records stay in the app's own sandbox and never overwrite or delete Mac data.
 
 ## Photo Trip Timeline iPhone App
 
@@ -109,3 +110,5 @@ When iCloud Drive is unavailable or unwritable, the app falls back to:
 ```
 
 Existing local records are deduplicated and merged with iCloud records without deleting the original local file. `daily-guidance.json` stores the plain-text Daily Guidance content by date.
+
+Opens and saved edits are logged individually in `~/.pomodoro-status-bar/guidance-activity.json` on Mac, and in the app container under the same filename on iPhone. Activity logs remain local to each device, do not sync through iCloud Drive, and do not change the guidance text JSON.
