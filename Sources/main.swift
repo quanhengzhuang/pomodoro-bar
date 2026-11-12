@@ -218,7 +218,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     private var records: [PomodoroRecord] = []
     /// daily-guidance.json 解码后的“日期 → 纯文本”字典。
     private var dailyGuidanceByDate: [String: String] = [:]
-    private var guidanceActivityEvents: [GuidanceActivityEvent] = []
     /// iCloud 文件解析失败后暂时标记，写入时回退本地以免覆盖损坏/未下载文件。
     private var unreadableICloudFileNames = Set<String>()
     // 时长配置集中在这里，单位统一为秒或明确带 Minutes 后缀。
@@ -230,10 +229,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         .appendingPathComponent(".pomodoro-status-bar", isDirectory: true)
     private let recordsFileName = "records.json"
     private let dailyGuidanceFileName = "daily-guidance.json"
-    /// 活动只记录在本机，不与 iCloud Drive 的指引正文文件混写。
-    private var guidanceActivityLog: GuidanceActivityLog {
-        GuidanceActivityLog(url: localDataDirectoryURL.appendingPathComponent("guidance-activity.json"))
-    }
     private let iCloudDataDirectoryName = "PomodoroBar"
     // 今日指引菜单与编辑窗口的默认宽度、文字内边距保持一致；拉伸后编辑框重新排版。
     private let dailyGuidanceMenuWidth: CGFloat = 520
@@ -297,7 +292,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         loadRecords()
         loadDailyGuidance()
         synchronizeDailyGuidanceToICloudIfNeeded()
-        loadGuidanceActivity()
         remainingSeconds = duration(for: .focus)
         configureStatusItem()
         rebuildMenu()
@@ -371,7 +365,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     func menuNeedsUpdate(_ menu: NSMenu) {
         refreshRecordsFromDataFiles()
         loadDailyGuidance()
-        recordGuidanceActivity(.opened)
         synchronizeFallbackDataToICloudIfNeeded()
         rebuildMenu()
     }
@@ -701,14 +694,11 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     /// 把今天的指引正文和设置/修改入口加入主菜单。
     private func addDailyGuidanceMenuItems() {
         let guidance = dailyGuidanceByDate[todayDateKey] ?? ""
-        let guidanceItem = NSMenuItem()
-        guidanceItem.view = makeDailyGuidanceMenuView(
-            text: guidance.isEmpty ? "今天还没有指引" : guidance,
-            dateKey: todayDateKey,
-            editable: !guidance.isEmpty,
-            isPlaceholder: guidance.isEmpty
-        )
-        menu.addItem(guidanceItem)
+        if !guidance.isEmpty {
+            let guidanceItem = NSMenuItem()
+            guidanceItem.view = makeDailyGuidanceMenuView(text: guidance, editable: true)
+            menu.addItem(guidanceItem)
+        }
 
         let editItem = NSMenuItem(
             title: guidance.isEmpty ? "设置今日指引..." : "修改今日指引...",
@@ -723,17 +713,11 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
     ///
     /// 普通 NSMenuItem.title 不适合多行长文本，因此使用只读 NSTextView，并通过
     /// LayoutManager 计算实际高度。只有今天的正文可以通过双击打开编辑窗口。
-    private func makeDailyGuidanceMenuView(
-        text: String,
-        dateKey: String,
-        editable: Bool = false,
-        isPlaceholder: Bool = false
-    ) -> NSView {
+    private func makeDailyGuidanceMenuView(text: String, editable: Bool = false) -> NSView {
         let contentWidth = dailyGuidanceMenuWidth - dailyGuidanceHorizontalPadding * 2
-        let activityHeight: CGFloat = 52
         let body = NSTextView(frame: NSRect(
             x: dailyGuidanceHorizontalPadding,
-            y: dailyGuidanceVerticalPadding + activityHeight,
+            y: dailyGuidanceVerticalPadding,
             width: contentWidth,
             height: 1
         ))
@@ -753,9 +737,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         )
         body.textStorage?.setAttributedString(NSAttributedString(
             string: text,
-            attributes: isPlaceholder
-                ? [.font: baseFont, .foregroundColor: NSColor.secondaryLabelColor]
-                : dailyGuidanceTextAttributes
+            attributes: dailyGuidanceTextAttributes
         ))
         if editable {
             let doubleClick = NSClickGestureRecognizer(target: self, action: #selector(openDailyGuidanceEditorFromMenu(_:)))
@@ -773,48 +755,10 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         }
         body.frame.size.height = bodyHeight
 
-        let viewHeight = dailyGuidanceVerticalPadding * 2 + bodyHeight + activityHeight
+        let viewHeight = dailyGuidanceVerticalPadding * 2 + bodyHeight
         let container = NSView(frame: NSRect(x: 0, y: 0, width: dailyGuidanceMenuWidth, height: viewHeight))
         container.addSubview(body)
-        let activity = makeGuidanceActivityStrip(dateKey: dateKey, width: contentWidth)
-        activity.frame.origin = NSPoint(x: dailyGuidanceHorizontalPadding, y: dailyGuidanceVerticalPadding)
-        container.addSubview(activity)
         return container
-    }
-
-    /// 一天 24 个小时，浅黄表示打开，深黄表示保存过编写内容。
-    private func makeGuidanceActivityStrip(dateKey: String, width: CGFloat) -> NSView {
-        let hours = GuidanceActivityLog.hours(on: dateKey, from: guidanceActivityEvents)
-        let strip = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 52))
-        let legend = NSTextField(labelWithString: "活动 · 浅色打开 / 深色编写")
-        legend.font = .systemFont(ofSize: 10)
-        legend.textColor = .secondaryLabelColor
-        legend.frame = NSRect(x: 0, y: 35, width: width, height: 14)
-        strip.addSubview(legend)
-
-        for hour in 0..<24 {
-            let square = NSView(frame: NSRect(x: CGFloat(hour) * 16, y: 17, width: 12, height: 12))
-            square.wantsLayer = true
-            let state = hours[hour]
-            let description = state == .edited ? "编写" : (state == .opened ? "打开" : "无活动")
-            square.layer?.backgroundColor = (
-                state == .edited ? dailyGuidanceColor :
-                (state == .opened ? dailyGuidanceColor.withAlphaComponent(0.45) : NSColor.separatorColor.withAlphaComponent(0.45))
-            ).cgColor
-            square.layer?.cornerRadius = 2
-            square.toolTip = "\(dateKey) \(String(format: "%02d", hour)):00 · \(description)"
-            square.setAccessibilityElement(true)
-            square.setAccessibilityLabel(square.toolTip)
-            strip.addSubview(square)
-        }
-        for hour in [0, 6, 12, 18, 23] {
-            let tick = NSTextField(labelWithString: String(format: "%02d", hour))
-            tick.font = .monospacedDigitSystemFont(ofSize: 9, weight: .regular)
-            tick.textColor = .secondaryLabelColor
-            tick.frame = NSRect(x: CGFloat(hour) * 16, y: 0, width: 22, height: 12)
-            strip.addSubview(tick)
-        }
-        return strip
     }
 
     /// 菜单结束跟踪后再打开模态窗口，避免在菜单事件处理中嵌套窗口事件循环。
@@ -888,23 +832,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
         } catch {
             NSLog("Could not encode daily guidance: \(error.localizedDescription)")
             return nil
-        }
-    }
-
-    private func loadGuidanceActivity() {
-        do {
-            guidanceActivityEvents = try guidanceActivityLog.load()
-        } catch {
-            guidanceActivityEvents = []
-            NSLog("Could not read guidance activity log (left unchanged): \(error.localizedDescription)")
-        }
-    }
-
-    private func recordGuidanceActivity(_ kind: GuidanceActivityKind) {
-        do {
-            guidanceActivityEvents = try guidanceActivityLog.append(kind)
-        } catch {
-            NSLog("Could not save guidance activity log (left unchanged): \(error.localizedDescription)")
         }
     }
 
@@ -1054,7 +981,7 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
                 let dateMenu = NSMenu()
                 // 复用今天正文的 520 点多行视图，历史展示样式完全一致。
                 let guidanceItem = NSMenuItem()
-                guidanceItem.view = makeDailyGuidanceMenuView(text: entry.text, dateKey: entry.dateKey)
+                guidanceItem.view = makeDailyGuidanceMenuView(text: entry.text)
                 guidanceItem.isEnabled = false
                 dateMenu.addItem(guidanceItem)
                 dateItem.submenu = dateMenu
@@ -1733,7 +1660,6 @@ final class PomodoroController: NSObject, NSApplicationDelegate, NSUserNotificat
             return
         }
 
-        recordGuidanceActivity(.edited)
         rebuildMenu()
     }
 
