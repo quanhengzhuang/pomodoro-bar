@@ -101,6 +101,15 @@ private struct DraggedBook: Codable, Transferable {
     }
 }
 
+private enum GridInsertionSide {
+    case before, after
+}
+
+private struct GridInsertionTarget: Equatable {
+    let bookID: String
+    let side: GridInsertionSide
+}
+
 private struct LibraryScreen: View {
     let store: LibraryStore
     let list: ReadingList
@@ -108,13 +117,15 @@ private struct LibraryScreen: View {
     let openSettings: () -> Void
     let openPicker: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.layoutDirection) private var layoutDirection
     @ScaledMetric(relativeTo: .caption) private var coverColumnWidth = 60.0
     @State private var editMode = EditMode.inactive
     @State private var dragSession = UUID()
-    @State private var highlightedDropTarget: String?
+    @State private var insertionTarget: GridInsertionTarget?
     @State private var bookToRemove: ReadingBook?
 
     private let gridSpacing: CGFloat = 14
+    private let gridRowSpacing: CGFloat = 16
 
     private var books: [ReadingBook] {
         list == .recent ? store.recentBooks : store.customBooks
@@ -221,7 +232,7 @@ private struct LibraryScreen: View {
             let columnCount = dynamicTypeSize.isAccessibilitySize ? 1 : 4
             let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: gridSpacing), count: columnCount)
             ScrollView {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: gridRowSpacing) {
                     ForEach(entries, id: \.element.id) { index, book in
                         gridBook(book, at: index, count: entries.count)
                     }
@@ -245,25 +256,18 @@ private struct LibraryScreen: View {
 
         if isSorting {
             tile
-                .draggable(DraggedBook(id: book.id, session: dragSession))
-                .dropDestination(for: DraggedBook.self) { items, _ in
-                    highlightedDropTarget = nil
-                    guard items.count == 1, let item = items.first, item.session == dragSession else { return false }
-                    return moveBook(item.id, to: book.id)
-                } isTargeted: { isTargeted in
-                    if isTargeted {
-                        highlightedDropTarget = book.id
-                    } else if highlightedDropTarget == book.id {
-                        highlightedDropTarget = nil
+                .overlay {
+                    let halves = dynamicTypeSize.isAccessibilitySize
+                        ? AnyLayout(VStackLayout(spacing: 0)) : AnyLayout(HStackLayout(spacing: 0))
+                    halves {
+                        dropRegion(bookID: book.id, side: .before)
+                        dropRegion(bookID: book.id, side: .after)
                     }
                 }
+                .draggable(DraggedBook(id: book.id, session: dragSession))
                 .overlay {
-                    if highlightedDropTarget == book.id {
-                        Rectangle()
-                            .fill(Color.accentColor.opacity(0.16))
-                            .overlay { Rectangle().strokeBorder(Color.accentColor, lineWidth: 2) }
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
+                    if let insertionTarget, insertionTarget.bookID == book.id {
+                        insertionLine(for: insertionTarget.side)
                     }
                 }
                 .overlay(alignment: .topTrailing) {
@@ -288,6 +292,44 @@ private struct LibraryScreen: View {
         }
     }
 
+    private func dropRegion(bookID: String, side: GridInsertionSide) -> some View {
+        let target = GridInsertionTarget(bookID: bookID, side: side)
+        return Color.clear
+            .contentShape(.rect)
+            .accessibilityHidden(true)
+            .dropDestination(for: DraggedBook.self) { items, _ in
+                insertionTarget = nil
+                guard items.count == 1, let item = items.first, item.session == dragSession else { return false }
+                return moveBook(item.id, to: bookID, side: side)
+            } isTargeted: { isTargeted in
+                if isTargeted {
+                    insertionTarget = target
+                } else if insertionTarget == target {
+                    insertionTarget = nil
+                }
+            }
+    }
+
+    private func insertionLine(for side: GridInsertionSide) -> some View {
+        let singleColumn = dynamicTypeSize.isAccessibilitySize
+        let before = side == .before
+        let alignment: Alignment = singleColumn ? (before ? .top : .bottom) : (before ? .leading : .trailing)
+        let sign: CGFloat = before ? -1 : 1
+        let layoutSign: CGFloat = layoutDirection == .leftToRight ? 1 : -1
+        let thickness: CGFloat = 3
+
+        return Capsule()
+            .fill(Color.accentColor)
+            .frame(width: singleColumn ? nil : thickness, height: singleColumn ? thickness : nil)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
+            .offset(
+                x: singleColumn ? 0 : sign * layoutSign * (gridSpacing + thickness) / 2,
+                y: singleColumn ? sign * (gridRowSpacing + thickness) / 2 : 0
+            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+
     private func beginEditing() {
         guard !isSorting else { return }
         dragSession = UUID()
@@ -295,7 +337,7 @@ private struct LibraryScreen: View {
     }
 
     private func finishEditing() {
-        highlightedDropTarget = nil
+        insertionTarget = nil
         editMode = .inactive
     }
 
@@ -308,13 +350,21 @@ private struct LibraryScreen: View {
     }
 
     @discardableResult
-    private func moveBook(_ id: String, to targetID: String) -> Bool {
+    private func moveBook(_ id: String, to targetID: String, side: GridInsertionSide? = nil) -> Bool {
         let books = store.customBooks
         guard isSorting, list == .custom, id != targetID,
               let source = books.firstIndex(where: { $0.id == id }),
               let target = books.firstIndex(where: { $0.id == targetID }) else { return false }
-        withAnimation { store.moveCustomBook(id, by: target - source) }
-        return true
+        let destination: Int
+        if let side {
+            let boundary = target + (side == .after ? 1 : 0)
+            destination = boundary - (source < boundary ? 1 : 0)
+        } else {
+            destination = target
+        }
+        guard destination != source else { return false }
+        withAnimation { store.moveCustomBook(id, by: destination - source) }
+        return store.customBooks[destination].id == id
     }
 
     @ViewBuilder

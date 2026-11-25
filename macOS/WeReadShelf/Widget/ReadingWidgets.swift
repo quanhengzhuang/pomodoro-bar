@@ -130,7 +130,7 @@ private struct CoverReadingWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(list.title)
-                .font(.system(.subheadline, design: .serif, weight: .semibold))
+                .font(.system(.subheadline, design: .serif, weight: .bold))
                 .accessibilityAddTraits(.isHeader)
 
             if entry.books.isEmpty {
@@ -182,7 +182,6 @@ private struct CoverReadingWidgetView: View {
         return cover(for: book)
             .frame(width: height * coverAspect, height: height)
             .clipShape(shape)
-            .overlay { shape.strokeBorder(accent.opacity(0.28), lineWidth: 1) }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(book.title)
     }
