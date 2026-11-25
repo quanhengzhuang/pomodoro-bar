@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
 	<key>CFBundleDisplayName</key>
-	<string>微信读书书单</string>
+	<string>WeReadShelf</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

@@ -72,13 +72,15 @@ The standalone project is at `iOS/PhotoTimeline/PhotoTimeline.xcodeproj`. Open i
 
 Trips, photo copies, and notes stay in this app's local container. Import does not modify the Photos library or Pomodoro records. If a photo has no time zone metadata, the app interprets its time in the phone's current time zone; you can correct it in the point editor.
 
-## WeRead Book Lists for Mac
+## WeReadShelf for Mac
 
-Open the [WeRead project](../../macOS/WeRead/WeRead.xcodeproj) in Xcode. Under **Signing & Capabilities**, select the same Apple Developer Team for both `WeRead` and `WeReadWidgets`, then run the `WeRead` scheme. The project uses a macOS App Group prefixed with the Team ID. The app requires macOS 14 or later. [Apple App Group documentation](https://developer.apple.com/documentation/xcode/accessing-app-group-containers)
+Open the [WeReadShelf project](../../macOS/WeReadShelf/WeReadShelf.xcodeproj) in Xcode. Under **Signing & Capabilities**, select the same Apple Developer Team for `WeReadShelf` and `WeReadShelfWidgets`, then run the `WeReadShelf` scheme. The project uses a macOS App Group prefixed with the Team ID. The app requires macOS 14 or later. [Apple App Group documentation](https://developer.apple.com/documentation/xcode/accessing-app-group-containers)
 
-Enter your WeRead API key in the app's settings. Recent Reading shows ebooks from your shelf in order of last reading time. In Custom Book List, you can add books from your shelf, remove books, and change their order. The app keeps the key in Keychain and makes synced lists available offline. [Get a WeRead API key](https://weread.qq.com/r/weread-skills)
+Enter your WeRead API key in the app's settings. The app syncs your ebook shelf at launch, and you can also refresh it from the toolbar. The app stores the key in Keychain. [Get a WeRead API key](https://weread.qq.com/r/weread-skills)
 
-Right-click your Mac desktop, choose **Edit Widgets**, and search for **微信读书书单**. You can add both Recent Reading and Custom Book List at the same time. Each widget displays the last synced or saved list and opens it in the app when clicked. The app syncs the shelf at launch, and you can also refresh it from the toolbar.
+Recent Reading is sorted by the last reading date. In Custom Book List, you can add books from your shelf, remove books, and change their order. The shelf picker shows recently read books first. Each list remembers its list or grid layout, and clicking a cover opens WeRead. After syncing, the app fetches total reading time, progress, and the completion date when available for the five most recently read books. You can load stats for other books on demand. Synced lists and stats are available offline.
+
+Right-click your Mac desktop, choose **Edit Widgets**, and search for `WeReadShelf`. You can add both Recent Reading and Custom Book List at the same time. Each widget displays the last synced or saved list and opens it in the app when clicked.
 
 ## Record Format
 

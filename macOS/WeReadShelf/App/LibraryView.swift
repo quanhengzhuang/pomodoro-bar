@@ -2,10 +2,13 @@ import SwiftUI
 
 struct LibraryView: View {
     let store: LibraryStore
+    @AppStorage("recentLibraryLayout") private var recentLayout = LibraryLayout.list
+    @AppStorage("customLibraryLayout") private var customLayout = LibraryLayout.list
     @State private var selection: ReadingList? = .recent
     @State private var showsShelfPicker = false
 
     private var activeList: ReadingList { selection ?? .recent }
+    private var layout: Binding<LibraryLayout> { activeList == .recent ? $recentLayout : $customLayout }
     private var books: [ReadingBook] { activeList == .recent ? store.recentBooks : store.customBooks }
     private var canRefresh: Bool { store.hasAPIKey && !store.isRefreshing && !store.isSavingAPIKey }
 
@@ -25,6 +28,15 @@ struct LibraryView: View {
                 .navigationTitle(activeList.title)
                 .safeAreaInset(edge: .bottom, spacing: 0) { syncStatus }
                 .toolbar {
+                    ToolbarItem(placement: .principal) {
+                        Picker("布局", selection: layout) {
+                            Label("列表", systemImage: "list.bullet").tag(LibraryLayout.list)
+                            Label("格子", systemImage: "square.grid.2x2").tag(LibraryLayout.grid)
+                        }
+                        .labelsHidden()
+                        .labelStyle(.iconOnly)
+                        .pickerStyle(.segmented)
+                    }
                     ToolbarItemGroup(placement: .primaryAction) {
                         if activeList == .custom {
                             Button("添加书籍", systemImage: "plus") { showsShelfPicker = true }
@@ -52,22 +64,7 @@ struct LibraryView: View {
     @ViewBuilder
     private var listContent: some View {
         if !books.isEmpty {
-            List {
-                ForEach(Array(books.enumerated()), id: \.element.id) { index, book in
-                    BookRow(book: book, showsReadingDate: activeList == .recent) {
-                        if let url = book.destinationURL {
-                            let title = book.readerURL == url ? "打开阅读" : "查看详情"
-                            Link(destination: url) { Image(systemName: "arrow.up.right.square") }
-                                .help(title)
-                                .accessibilityLabel("\(title)《\(book.title)》")
-                        }
-                        if activeList == .custom {
-                            customActions(for: book, at: index)
-                        }
-                    }
-                }
-            }
-            .listStyle(.inset)
+            bookCollection
         } else if !store.hasAPIKey && store.shelfBooks.isEmpty {
             ContentUnavailableView {
                 Label("连接微信读书", systemImage: "books.vertical")
@@ -105,8 +102,52 @@ struct LibraryView: View {
         }
     }
 
+    @ViewBuilder
+    private var bookCollection: some View {
+        let entries = Array(books.enumerated())
+        switch layout.wrappedValue {
+        case .list:
+            List {
+                ForEach(entries, id: \.element.id) { index, book in
+                    BookRow(book: book, progress: store.progress(for: book.id)) {
+                        bookActions(for: book, at: index)
+                    }
+                }
+            }
+            .listStyle(.inset)
+        case .grid:
+            ScrollView {
+                LazyVGrid(
+                    columns: [GridItem(.adaptive(minimum: 132, maximum: 178), spacing: 18, alignment: .topLeading)],
+                    alignment: .leading,
+                    spacing: 24
+                ) {
+                    ForEach(entries, id: \.element.id) { index, book in
+                        VStack(alignment: .leading, spacing: 6) {
+                            BookCover(book: book)
+                            BookHeading(book: book, reservesTitleSpace: true)
+                            BookMetrics(book: book, progress: store.progress(for: book.id))
+                            HStack(spacing: 10) { bookActions(for: book, at: index) }
+                                .buttonStyle(.borderless)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .padding(20)
+            }
+        }
+    }
+
     private func refresh() {
         Task { await store.refresh() }
+    }
+
+    @ViewBuilder
+    private func bookActions(for book: ReadingBook, at index: Int) -> some View {
+        ReadingDataButton(store: store, book: book)
+        if activeList == .custom {
+            customActions(for: book, at: index)
+        }
     }
 
     private func customActions(for book: ReadingBook, at index: Int) -> some View {
@@ -159,6 +200,10 @@ struct LibraryView: View {
             .background(.bar)
         }
     }
+}
+
+private enum LibraryLayout: String {
+    case list, grid
 }
 
 private struct ShelfPicker: View {
@@ -236,51 +281,152 @@ private struct WarningLabel: View {
 
 private struct BookRow<Actions: View>: View {
     let book: ReadingBook
-    var showsReadingDate = false
+    var progress: ReadingProgress?
     @ViewBuilder var actions: () -> Actions
-
-    private static var readingDateFormat: Date.ISO8601FormatStyle {
-        Date.ISO8601FormatStyle(timeZone: .current).year().month().day().dateSeparator(.dash)
-    }
 
     var body: some View {
         HStack(spacing: 12) {
-            AsyncImage(url: book.coverURL) { image in
-                image.resizable().scaledToFill()
-            } placeholder: {
-                Image(systemName: "book.closed")
-                    .font(.caption)
-                    .foregroundStyle(Color.indigo)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.indigo.opacity(0.12))
-            }
-            .frame(width: 31, height: 44)
-            .clipShape(.rect(cornerRadius: 3))
-            .accessibilityHidden(true)
+            BookCover(book: book)
+                .frame(width: 40)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text(book.title)
-                    .font(.body.weight(.medium))
-                    .lineLimit(2)
-                if let author = book.author, !author.isEmpty {
-                    Text(author)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
+            VStack(alignment: .leading, spacing: 3) {
+                BookHeading(book: book)
+                BookMetrics(book: book, progress: progress)
             }
+
             Spacer(minLength: 8)
-
-            if showsReadingDate, let date = book.lastReadAt {
-                Text(date, format: Self.readingDateFormat)
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                    .fixedSize()
-            }
-
             HStack(spacing: 9, content: actions)
                 .buttonStyle(.borderless)
         }
         .padding(.vertical, 4)
+    }
+}
+
+private struct BookCover: View {
+    let book: ReadingBook
+
+    var body: some View {
+        if let url = book.destinationURL {
+            let action = book.readerURL == url ? "打开阅读" : "查看详情"
+            Link(destination: url) { artwork }
+                .buttonStyle(.plain)
+                .help(action)
+                .accessibilityLabel("\(action)《\(book.title)》")
+        } else {
+            artwork.accessibilityHidden(true)
+        }
+    }
+
+    private var artwork: some View {
+        Rectangle()
+            .fill(Color.indigo.opacity(0.12))
+            .aspectRatio(0.7, contentMode: .fit)
+            .overlay {
+                AsyncImage(url: book.coverURL) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Image(systemName: "book.closed")
+                        .foregroundStyle(Color.indigo)
+                }
+            }
+            .clipShape(.rect(cornerRadius: 3))
+            .contentShape(.rect)
+    }
+}
+
+private struct BookHeading: View {
+    let book: ReadingBook
+    var reservesTitleSpace = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(book.title)
+                .font(.body.weight(.medium))
+                .lineLimit(2, reservesSpace: reservesTitleSpace)
+            if let author = book.author, !author.isEmpty {
+                Text(author)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
+private struct BookMetrics: View {
+    let book: ReadingBook
+    let progress: ReadingProgress?
+
+    private static let readingDateFormat = Date.ISO8601FormatStyle(timeZone: .current)
+        .year().month().day().dateSeparator(.dash)
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            if let seconds = progress?.elapsedSeconds {
+                Text("累计 \(duration(seconds))")
+            }
+            if let percent = progress?.progressPercentage {
+                Text("进度 \(percent)%")
+            }
+            if let date = [progress?.lastReadAt, book.lastReadAt].compactMap({ $0 }).max() {
+                Text("最近阅读 \(date.formatted(Self.readingDateFormat))")
+            }
+            if let date = progress?.finishedAt {
+                Text("读完 \(date.formatted(Self.readingDateFormat))")
+            }
+        }
+        .font(.caption.monospacedDigit())
+        .foregroundStyle(.secondary)
+    }
+
+    private func duration(_ seconds: Int) -> String {
+        let minutes = seconds / 60
+        if minutes < 1 { return "\(seconds) 秒" }
+        if minutes < 60 { return "\(minutes) 分钟" }
+        return "\(minutes / 60) 小时 \(minutes % 60) 分钟"
+    }
+}
+
+private struct ReadingDataButton: View {
+    let store: LibraryStore
+    let book: ReadingBook
+    @State private var isShowingData = false
+
+    var body: some View {
+        Button {
+            isShowingData = true
+            if store.progress(for: book.id) == nil { loadProgress() }
+        } label: {
+            Image(systemName: "chart.bar")
+        }
+        .help("查看阅读数据")
+        .accessibilityLabel("查看《\(book.title)》的阅读数据")
+        .popover(isPresented: $isShowingData) {
+            let progress = store.progress(for: book.id)
+            VStack(alignment: .leading, spacing: 8) {
+                Text(book.title).font(.headline)
+                BookMetrics(book: book, progress: progress)
+                if store.isLoadingProgress(for: book.id) {
+                    ProgressView("正在获取阅读数据…").controlSize(.small)
+                } else if let error = store.progressError(for: book.id) {
+                    WarningLabel(message: error)
+                } else if store.hasAPIKey && progress?.elapsedSeconds == nil && progress?.progressPercentage == nil {
+                    Text("暂无累计时长和进度").foregroundStyle(.secondary)
+                }
+                if store.hasAPIKey {
+                    Button("刷新阅读数据", action: loadProgress)
+                        .disabled(store.isLoadingProgress(for: book.id))
+                } else {
+                    SettingsLink { Text("打开设置") }
+                }
+            }
+            .padding(14)
+            .frame(width: 238, alignment: .leading)
+        }
+    }
+
+    private func loadProgress() {
+        guard store.hasAPIKey else { return }
+        Task { await store.loadProgress(for: book.id) }
     }
 }

@@ -72,13 +72,15 @@ iOS 18 及以上还可以在锁屏底部添加“打开 Pomodoro”快捷控制�
 
 行程、照片副本和备注保存在这个 App 的本地沙盒中，不修改系统相册或番茄钟记录。照片没有时区信息时按手机当前时区解释，可在时间点中更正。
 
-## 微信读书书单 Mac App
+## WeReadShelf Mac App
 
-用 Xcode 打开 [WeRead 工程](macOS/WeRead/WeRead.xcodeproj)。在两个 target `WeRead` 和 `WeReadWidgets` 的 **Signing & Capabilities** 中选择同一个 Apple Developer Team，再运行 `WeRead` scheme。工程使用带 Team ID 前缀的 macOS App Group。应用最低支持 macOS 14。[Apple App Group 文档](https://developer.apple.com/documentation/xcode/accessing-app-group-containers)
+用 Xcode 打开 [WeReadShelf 工程](macOS/WeReadShelf/WeReadShelf.xcodeproj)。在 `WeReadShelf` 和 `WeReadShelfWidgets` 的 **Signing & Capabilities** 中选择同一个 Apple Developer Team，再运行 `WeReadShelf` scheme。工程使用带 Team ID 前缀的 macOS App Group。应用最低支持 macOS 14。[Apple App Group 文档](https://developer.apple.com/documentation/xcode/accessing-app-group-containers)
 
-首次打开时，在应用设置中填入微信读书 API Key。应用会同步电子书书架，按最后阅读时间展示「最近阅读」。在「自定义书单」可从书架选书、移除和排序。API Key 保存在钥匙串，已同步的列表可离线查看。[获取微信读书 API Key](https://weread.qq.com/r/weread-skills)
+首次打开时，在应用设置中填入微信读书 API Key。应用启动时会同步电子书书架，也可以在工具栏手动刷新。API Key 保存在钥匙串。[获取微信读书 API Key](https://weread.qq.com/r/weread-skills)
 
-在 Mac 桌面右键选择「编辑小组件」，搜索「微信读书书单」，即可同时添加「最近阅读」和「自定义书单」。小组件显示最近一次同步或编辑后保存的内容，点击可打开对应列表。应用每次启动会同步书架，也可以在工具栏手动刷新。
+「最近阅读」按最后阅读时间排序。「自定义书单」可从书架选书、移除和排序，选书时优先显示最近读过的书。两份书单各自记住列表或格子布局，点击封面可前往微信读书。同步后会获取最近 5 本书的累计阅读时长、进度和读完日期（如有），其余书籍可按需加载。已同步的书单和阅读数据可离线查看。
+
+在 Mac 桌面右键选择「编辑小组件」，搜索 `WeReadShelf`，即可同时添加「最近阅读」和「自定义书单」。小组件显示最近一次同步或编辑后保存的书单，点击可打开应用中的对应书单。
 
 ## 记录格式
 

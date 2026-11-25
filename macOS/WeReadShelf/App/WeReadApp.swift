@@ -6,7 +6,7 @@ struct WeReadApp: App {
     @State private var store = LibraryStore()
 
     var body: some Scene {
-        Window("微信读书书单", id: "library") {
+        Window("WeReadShelf", id: "library") {
             LibraryView(store: store)
                 .frame(minWidth: 640, minHeight: 390)
                 .handlesExternalEvents(preferring: Self.widgetEvents, allowing: Self.widgetEvents)

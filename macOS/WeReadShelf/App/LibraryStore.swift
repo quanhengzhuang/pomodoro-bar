@@ -17,13 +17,18 @@ final class LibraryStore {
     private let api = WeReadAPI()
     private var credential: APIKeyRecord?
     private var library = CachedLibrary()
+    private var progressRequests: [String: Task<Void, Never>] = [:]
+    private var progressErrors: [String: String] = [:]
+    @ObservationIgnored private var automaticProgressTask: Task<Void, Never>?
     private var canSaveCache = true
     private var didStart = false
 
     var hasAPIKey: Bool { credential != nil }
     var lastSyncedAt: Date? { library.lastSyncedAt }
-    var shelfBooks: [ReadingBook] { library.shelfBooks }
-    var recentBooks: [ReadingBook] { library.recentBooks }
+    var shelfBooks: [ReadingBook] {
+        library.shelfBooks.sorted { ($0.lastReadAt ?? .distantPast) > ($1.lastReadAt ?? .distantPast) }
+    }
+    var recentBooks: [ReadingBook] { shelfBooks.filter { $0.lastReadAt != nil } }
     var customBooks: [ReadingBook] { library.customBooks }
 
     init() {
@@ -43,6 +48,8 @@ final class LibraryStore {
         if let credential, library.credentialID != credential.id {
             library.shelfBooks = []
             library.lastSyncedAt = nil
+            library.readingProgress = nil
+            library.customBooks = library.customBooks.map(\.withoutLastReadDate)
         }
     }
 
@@ -63,7 +70,7 @@ final class LibraryStore {
         do {
             let shelf = try await api.fetchShelf(apiKey: credential.key)
             try Task.checkCancellation()
-            apply(shelf, credentialID: credential.id)
+            apply(shelf, credential: credential)
         } catch {
             if !Task.isCancelled { errorMessage = syncErrorMessage(for: error) }
         }
@@ -88,7 +95,7 @@ final class LibraryStore {
             try savedCredential.save()
             credential = savedCredential
             errorMessage = nil
-            apply(shelf, credentialID: savedCredential.id)
+            apply(shelf, credential: savedCredential)
             return true
         } catch {
             if !Task.isCancelled { apiKeyErrorMessage = syncErrorMessage(for: error) }
@@ -98,6 +105,37 @@ final class LibraryStore {
 
     func clearAPIKeyError() {
         apiKeyErrorMessage = nil
+    }
+
+    func progress(for bookID: String) -> ReadingProgress? {
+        guard let credential, credential.id == library.credentialID else { return nil }
+        return library.readingProgress?[bookID]
+    }
+
+    func isLoadingProgress(for bookID: String) -> Bool {
+        progressRequests[bookID] != nil
+    }
+
+    func progressError(for bookID: String) -> String? {
+        progressErrors[bookID]
+    }
+
+    func loadProgress(for bookID: String) async {
+        guard let credential, credential.id == library.credentialID,
+              library.shelfBooks.contains(where: { $0.id == bookID }) ||
+                  customBooks.contains(where: { $0.id == bookID }) else { return }
+        if let request = progressRequests[bookID] {
+            await request.value
+            return
+        }
+
+        progressErrors[bookID] = nil
+        let request = Task { [weak self] in
+            guard let self else { return }
+            await self.fetchProgress(for: bookID, credential: credential)
+        }
+        progressRequests[bookID] = request
+        await request.value
     }
 
     func addToCustomList(_ id: String) {
@@ -122,9 +160,17 @@ final class LibraryStore {
         saveCustomBooks(books)
     }
 
-    private func apply(_ shelf: WeReadAPI.Shelf, credentialID: UUID) {
+    private func apply(_ shelf: WeReadAPI.Shelf, credential: APIKeyRecord) {
+        automaticProgressTask?.cancel()
         var updated = library
-        updated.credentialID = credentialID
+        if updated.credentialID != credential.id {
+            for request in progressRequests.values { request.cancel() }
+            progressRequests.removeAll()
+            progressErrors.removeAll()
+            updated.readingProgress = nil
+            updated.customBooks = updated.customBooks.map(\.withoutLastReadDate)
+        }
+        updated.credentialID = credential.id
         updated.shelfBooks = shelf.books
         updated.lastSyncedAt = Date()
         let shelfByID = Dictionary(uniqueKeysWithValues: shelf.books.map { ($0.id, $0) })
@@ -133,6 +179,38 @@ final class LibraryStore {
         library = updated
         upgradeMessage = shelf.hasSkillUpgrade ? "微信读书 Skill 有新版本。" : nil
         publishWidgets()
+        let recentIDs = recentBooks.prefix(5).map(\.id)
+        let credentialID = credential.id
+        automaticProgressTask = Task { [weak self] in
+            for bookID in recentIDs {
+                guard !Task.isCancelled, let self, self.credential?.id == credentialID else { return }
+                await self.loadProgress(for: bookID)
+            }
+        }
+    }
+
+    private func fetchProgress(for bookID: String, credential: APIKeyRecord) async {
+        defer {
+            if self.credential?.id == credential.id {
+                progressRequests[bookID] = nil
+            }
+        }
+
+        do {
+            let progress = try await api.fetchProgress(bookID: bookID, apiKey: credential.key)
+            try Task.checkCancellation()
+            guard self.credential?.id == credential.id else { return }
+
+            var updated = library
+            if updated.readingProgress == nil { updated.readingProgress = [:] }
+            updated.readingProgress?[bookID] = progress
+            saveCache(updated)
+            library = updated
+        } catch {
+            if !Task.isCancelled, self.credential?.id == credential.id {
+                progressErrors[bookID] = syncErrorMessage(for: error)
+            }
+        }
     }
 
     private func saveCustomBooks(_ books: [ReadingBook]) {
@@ -178,17 +256,21 @@ final class LibraryStore {
     }
 }
 
+private extension ReadingBook {
+    var withoutLastReadDate: ReadingBook {
+        ReadingBook(
+            id: id, title: title, author: author, coverURL: coverURL,
+            readerURL: readerURL, detailURL: detailURL, lastReadAt: nil, isPrivate: isPrivate
+        )
+    }
+}
+
 private struct CachedLibrary: Codable {
     var credentialID: UUID?
     var shelfBooks: [ReadingBook] = []
     var customBooks: [ReadingBook] = []
     var lastSyncedAt: Date?
-
-    var recentBooks: [ReadingBook] {
-        shelfBooks.compactMap { book in book.lastReadAt.map { (book: book, readAt: $0) } }
-            .sorted { $0.readAt > $1.readAt }
-            .map(\.book)
-    }
+    var readingProgress: [String: ReadingProgress]?
 
     private static var fileURL: URL {
         URL.applicationSupportDirectory.appending(path: "WeRead/library.json")

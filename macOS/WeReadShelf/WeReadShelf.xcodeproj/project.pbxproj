@@ -15,7 +15,8 @@
 		D10000000000000000000007 /* ReadingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000005 /* ReadingModels.swift */; };
 		D10000000000000000000008 /* WidgetSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000006 /* WidgetSnapshotStore.swift */; };
 		D10000000000000000000009 /* ReadingWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = D20000000000000000000007 /* ReadingWidgets.swift */; };
-		D1000000000000000000000A /* WeReadWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D2000000000000000000000D /* WeReadWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		D1000000000000000000000A /* WeReadShelfWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = D2000000000000000000000D /* WeReadShelfWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		D1000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = D2000000000000000000000E /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -24,7 +25,7 @@
 			containerPortal = D40000000000000000000001 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = D50000000000000000000002;
-			remoteInfo = WeReadWidgets;
+			remoteInfo = WeReadShelfWidgets;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -34,7 +35,7 @@
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
-			files = (D1000000000000000000000A /* WeReadWidgets.appex in Embed App Extensions */, );
+			files = (D1000000000000000000000A /* WeReadShelfWidgets.appex in Embed App Extensions */, );
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -49,11 +50,12 @@
 		D20000000000000000000006 /* WidgetSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshotStore.swift; sourceTree = "<group>"; };
 		D20000000000000000000007 /* ReadingWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingWidgets.swift; sourceTree = "<group>"; };
 		D20000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		D20000000000000000000009 /* WeRead.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WeRead.entitlements; sourceTree = "<group>"; };
+		D20000000000000000000009 /* WeReadShelf.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WeReadShelf.entitlements; sourceTree = "<group>"; };
 		D2000000000000000000000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		D2000000000000000000000B /* WeReadWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WeReadWidgets.entitlements; sourceTree = "<group>"; };
-		D2000000000000000000000C /* WeRead.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WeRead.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		D2000000000000000000000D /* WeReadWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WeReadWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D2000000000000000000000B /* WeReadShelfWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WeReadShelfWidgets.entitlements; sourceTree = "<group>"; };
+		D2000000000000000000000C /* WeReadShelf.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WeReadShelf.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D2000000000000000000000D /* WeReadShelfWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WeReadShelfWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		D2000000000000000000000E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -89,8 +91,9 @@
 				D20000000000000000000002 /* LibraryView.swift */,
 				D20000000000000000000003 /* LibraryStore.swift */,
 				D20000000000000000000004 /* WeReadAPI.swift */,
+				D2000000000000000000000E /* Assets.xcassets */,
 				D20000000000000000000008 /* Info.plist */,
-				D20000000000000000000009 /* WeRead.entitlements */,
+				D20000000000000000000009 /* WeReadShelf.entitlements */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -109,7 +112,7 @@
 			children = (
 				D20000000000000000000007 /* ReadingWidgets.swift */,
 				D2000000000000000000000A /* Info.plist */,
-				D2000000000000000000000B /* WeReadWidgets.entitlements */,
+				D2000000000000000000000B /* WeReadShelfWidgets.entitlements */,
 			);
 			path = Widget;
 			sourceTree = "<group>";
@@ -117,8 +120,8 @@
 		D70000000000000000000005 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				D2000000000000000000000C /* WeRead.app */,
-				D2000000000000000000000D /* WeReadWidgets.appex */,
+				D2000000000000000000000C /* WeReadShelf.app */,
+				D2000000000000000000000D /* WeReadShelfWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -126,33 +129,34 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		D50000000000000000000001 /* WeRead */ = {
+		D50000000000000000000001 /* WeReadShelf */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = D80000000000000000000002 /* WeRead configurations */;
+			buildConfigurationList = D80000000000000000000002 /* WeReadShelf configurations */;
 			buildPhases = (
 				D60000000000000000000001 /* Sources */,
 				D60000000000000000000004 /* Frameworks */,
+				D60000000000000000000006 /* Resources */,
 				D60000000000000000000003 /* Embed App Extensions */,
 			);
 			buildRules = ();
 			dependencies = (D30000000000000000000002 /* PBXTargetDependency */, );
-			name = WeRead;
-			productName = WeRead;
-			productReference = D2000000000000000000000C /* WeRead.app */;
+			name = WeReadShelf;
+			productName = WeReadShelf;
+			productReference = D2000000000000000000000C /* WeReadShelf.app */;
 			productType = "com.apple.product-type.application";
 		};
-		D50000000000000000000002 /* WeReadWidgets */ = {
+		D50000000000000000000002 /* WeReadShelfWidgets */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = D80000000000000000000003 /* WeReadWidgets configurations */;
+			buildConfigurationList = D80000000000000000000003 /* WeReadShelfWidgets configurations */;
 			buildPhases = (
 				D60000000000000000000002 /* Sources */,
 				D60000000000000000000005 /* Frameworks */,
 			);
 			buildRules = ();
 			dependencies = ();
-			name = WeReadWidgets;
-			productName = WeReadWidgets;
-			productReference = D2000000000000000000000D /* WeReadWidgets.appex */;
+			name = WeReadShelfWidgets;
+			productName = WeReadShelfWidgets;
+			productReference = D2000000000000000000000D /* WeReadShelfWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -174,9 +178,18 @@
 			productRefGroup = D70000000000000000000005 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (D50000000000000000000001 /* WeRead */, D50000000000000000000002 /* WeReadWidgets */, );
+			targets = (D50000000000000000000001 /* WeReadShelf */, D50000000000000000000002 /* WeReadShelfWidgets */, );
 		};
 /* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		D60000000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (D1000000000000000000000B /* Assets.xcassets in Resources */, );
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		D60000000000000000000001 /* Sources */ = {
@@ -207,7 +220,7 @@
 /* Begin PBXTargetDependency section */
 		D30000000000000000000002 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = D50000000000000000000002 /* WeReadWidgets */;
+			target = D50000000000000000000002 /* WeReadShelfWidgets */;
 			targetProxy = D30000000000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
@@ -255,7 +268,8 @@
 		D90000000000000000000003 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = App/WeRead.entitlements;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/WeReadShelf.entitlements;
 				INFOPLIST_FILE = App/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = com.quanhengzhuang.WeRead;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -265,7 +279,8 @@
 		D90000000000000000000004 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				CODE_SIGN_ENTITLEMENTS = App/WeRead.entitlements;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/WeReadShelf.entitlements;
 				INFOPLIST_FILE = App/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = com.quanhengzhuang.WeRead;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -276,7 +291,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = Widget/WeReadWidgets.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Widget/WeReadShelfWidgets.entitlements;
 				INFOPLIST_FILE = Widget/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = com.quanhengzhuang.WeRead.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -288,7 +303,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = Widget/WeReadWidgets.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Widget/WeReadShelfWidgets.entitlements;
 				INFOPLIST_FILE = Widget/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = com.quanhengzhuang.WeRead.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -305,13 +320,13 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		D80000000000000000000002 /* WeRead configurations */ = {
+		D80000000000000000000002 /* WeReadShelf configurations */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (D90000000000000000000003 /* Debug */, D90000000000000000000004 /* Release */, );
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		D80000000000000000000003 /* WeReadWidgets configurations */ = {
+		D80000000000000000000003 /* WeReadShelfWidgets configurations */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (D90000000000000000000005 /* Debug */, D90000000000000000000006 /* Release */, );
 			defaultConfigurationIsVisible = 0;
