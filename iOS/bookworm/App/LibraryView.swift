@@ -277,7 +277,6 @@ private struct LibraryScreen: View {
                             .accessibilityLabel("《\(book.title)》的书单操作")
                         }
                     }
-                    .padding(.vertical, 4)
                     .contentShape(.rect)
                     .contextMenu {
                         if list == .recent { bookActions(book, at: index, count: entries.count) }
@@ -287,6 +286,7 @@ private struct LibraryScreen: View {
                         including: list == .custom && !isSorting ? .all : .none
                     )
                     .moveDisabled(!isSorting)
+                    .listRowInsets(EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 16))
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                 }
@@ -576,28 +576,45 @@ private struct BookDetails: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(book.title).font(compact ? .caption.weight(.semibold) : .headline)
+            Text(book.title).font(compact ? .footnote.weight(.semibold) : .headline)
                 .lineLimit(compact ? 1 : 2)
             if let author = book.author, !author.isEmpty {
                 Text(author).font(compact ? .caption : .subheadline).foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             ForEach(metadataLines, id: \.self) { line in
-                Text(line).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                    .lineLimit(compact && !dynamicTypeSize.isAccessibilitySize ? 1 : nil)
+                if dynamicTypeSize.isAccessibilitySize {
+                    Text(line.joined(separator: "，"))
+                } else {
+                    HStack(spacing: 7) {
+                        Text(line[0])
+                        if let second = line.dropFirst().first {
+                            Rectangle()
+                                .fill(Color.primary.opacity(0.085))
+                                .frame(width: 1, height: 10)
+                                .accessibilityHidden(true)
+                            Text(second)
+                        }
+                    }
+                    .lineLimit(1)
                     .minimumScaleFactor(0.9)
+                    .accessibilityElement(children: .combine)
+                }
             }
+            .font(.caption.monospacedDigit())
+            .foregroundStyle(.secondary)
         }
     }
 
     var shareDetails: [String] {
-        [book.author].compactMap { $0 }.filter { !$0.isEmpty } + metadataLines
+        [book.author].compactMap { $0 }.filter { !$0.isEmpty } +
+            metadataLines.map { $0.joined(separator: "  |  ") }
     }
 
-    private var metadataLines: [String] {
+    private var metadataLines: [[String]] {
         let catalog = [recommendationText, wordCountText].compactMap { $0 }
         let reading = [lastReadText, readingTimeText].compactMap { $0 }
-        return [catalog, reading].filter { !$0.isEmpty }.map { $0.joined(separator: "  |  ") }
+        return [catalog, reading].filter { !$0.isEmpty }
     }
 
     private var recommendationText: String? {

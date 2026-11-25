@@ -41,6 +41,7 @@ enum BookListShareRenderer {
 
     private static let ink = UIColor(red: 0.09, green: 0.13, blue: 0.19, alpha: 1)
     private static let secondary = UIColor(red: 0.33, green: 0.38, blue: 0.45, alpha: 1)
+    private static let metadataDivider = UIColor(white: 224.0 / 255, alpha: 1)
     private static let border = UIColor(red: 0.89, green: 0.91, blue: 0.94, alpha: 1)
     private static let placeholder = UIColor(red: 0.91, green: 0.95, blue: 0.99, alpha: 1)
     private static let accent = UIColor(red: 0.20, green: 0.37, blue: 0.58, alpha: 1)
@@ -151,9 +152,10 @@ enum BookListShareRenderer {
                         drawText(item.book.title, in: CGRect(x: x, y: textTop, width: textWidth, height: 46),
                                  size: 33, weight: .semibold, color: ink)
                         for (line, detail) in item.details.enumerated() {
+                            let isAuthor = line == 0 && detail == item.book.author
                             drawText(detail,
                                      in: CGRect(x: x, y: textTop + 46 + CGFloat(line) * 33, width: textWidth, height: 33),
-                                     size: 25, color: secondary)
+                                     size: 25, color: secondary, stylesMetadataDivider: !isAuthor)
                         }
                         border.setFill()
                         context.fill(CGRect(x: x, y: y + rowHeight - 1, width: textWidth, height: 1))
@@ -168,16 +170,32 @@ enum BookListShareRenderer {
 
     private static func drawText(
         _ text: String, in rect: CGRect, size: CGFloat, weight: UIFont.Weight = .regular,
-        color: UIColor, alignment: NSTextAlignment = .left
+        color: UIColor, alignment: NSTextAlignment = .left, stylesMetadataDivider: Bool = false
     ) {
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byTruncatingTail
         style.alignment = alignment
-        (text as NSString).draw(in: rect, withAttributes: [
-            .font: UIFont.systemFont(ofSize: size, weight: weight),
+        let font = UIFont.systemFont(ofSize: size, weight: weight)
+        let attributes: [NSAttributedString.Key: Any] = [
+            .font: font,
             .foregroundColor: color,
             .paragraphStyle: style
-        ])
+        ]
+        let string = text as NSString
+        let separator = string.range(of: "  |  ")
+        guard stylesMetadataDivider, separator.location != NSNotFound else {
+            string.draw(in: rect, withAttributes: attributes)
+            return
+        }
+
+        let rendered = NSMutableAttributedString(string: text, attributes: attributes)
+        let dividerFont = UIFont.systemFont(ofSize: size * 0.72)
+        rendered.addAttributes([
+            .font: dividerFont,
+            .foregroundColor: metadataDivider,
+            .baselineOffset: (font.capHeight - dividerFont.capHeight) / 2
+        ], range: NSRange(location: separator.location + 2, length: 1))
+        rendered.draw(in: rect)
     }
 
     private static func drawCover(_ image: UIImage?, in rect: CGRect, context: CGContext) {
