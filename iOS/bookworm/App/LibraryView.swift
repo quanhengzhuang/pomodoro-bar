@@ -157,6 +157,8 @@ private struct LibraryScreen: View {
     var body: some View {
         NavigationStack {
             collection
+                .scrollContentBackground(.hidden)
+                .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea())
                 .environment(\.editMode, $editMode)
                 .navigationTitle(list.title)
                 .refreshable { await store.refresh() }
@@ -279,6 +281,7 @@ private struct LibraryScreen: View {
                         including: list == .custom && !isSorting ? .all : .none
                     )
                     .moveDisabled(!isSorting)
+                    .listRowBackground(Color.clear)
                 }
                 .onMove(perform: list == .custom ? { offsets, destination in
                     moveListBook(at: offsets, toOffset: destination, displayedBooks: books)

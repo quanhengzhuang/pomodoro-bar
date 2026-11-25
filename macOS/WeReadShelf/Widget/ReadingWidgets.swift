@@ -27,7 +27,7 @@ private func readingConfiguration(for list: ReadingList) -> some WidgetConfigura
     StaticConfiguration(kind: list.widgetKind, provider: ReadingTimelineProvider(list: list)) { entry in
 #if os(iOS)
         CoverReadingWidgetView(list: list, entry: entry)
-            .containerBackground(.background, for: .widget)
+            .containerBackground(Color(uiColor: .secondarySystemBackground), for: .widget)
 #else
         ReadingWidgetView(list: list, entry: entry)
             .containerBackground(.background, for: .widget)
@@ -112,7 +112,6 @@ private struct ReadingTimelineProvider: TimelineProvider {
 #if os(iOS)
 private struct CoverReadingWidgetView: View {
     @Environment(\.widgetFamily) private var family
-    @Environment(\.displayScale) private var displayScale
 
     let list: ReadingList
     let entry: ReadingEntry
@@ -197,9 +196,6 @@ private struct CoverReadingWidgetView: View {
                         endPoint: .bottomTrailing
                     )
                 )
-                .overlay {
-                    shape.strokeBorder(.primary.opacity(0.24), lineWidth: 1 / displayScale)
-                }
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
@@ -217,14 +213,12 @@ private struct CoverReadingWidgetView: View {
                 image.scaledToFit()
             }
         } else {
-            ZStack(alignment: .leading) {
-                Rectangle().fill(accent.opacity(0.14))
-                Rectangle().fill(accent.opacity(0.48)).frame(width: 2)
-                Image(systemName: "book.closed.fill")
-                    .font(.title3)
-                    .foregroundStyle(accent)
-                    .frame(maxWidth: .infinity)
-            }
+            Rectangle().fill(accent.opacity(0.14))
+                .overlay {
+                    Image(systemName: "book.closed.fill")
+                        .font(.title3)
+                        .foregroundStyle(accent)
+                }
         }
     }
 }
