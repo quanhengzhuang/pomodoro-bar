@@ -78,7 +78,7 @@ Open the [WeReadShelf project](../../macOS/WeReadShelf/WeReadShelf.xcodeproj) in
 
 Enter your WeRead API key in the app's settings. The app syncs your ebook shelf at launch, and you can also refresh it from the toolbar. The app stores the key in Keychain. [Get a WeRead API key](https://weread.qq.com/r/weread-skills)
 
-Recent Reading is sorted by the last reading date. In Custom Book List, you can add books from your shelf, remove books, and change their order. The shelf picker shows recently read books first. Each list remembers its list or grid layout, and clicking a cover opens WeRead. After syncing, the app fetches total reading time for the five most recently read books. You can load stats for other books on demand. Synced lists and stats are available offline.
+Recent Reading is sorted by the last reading date. In Custom Book List, you can add books from your shelf, remove books, and change their order. The shelf picker shows recently read books first. Each list remembers its list or grid layout, and clicking a cover opens WeRead. After syncing, the app requests total reading time for the five most recently read books. You can request it for other books on demand. The app shows a duration when WeRead provides one. Synced lists and stats are available offline.
 
 Right-click your Mac desktop, choose **Edit Widgets**, and search for `WeReadShelf`. You can add both Recent Reading and Custom Book List at the same time. Each widget displays the last synced or saved list and opens it in the app when clicked.
 

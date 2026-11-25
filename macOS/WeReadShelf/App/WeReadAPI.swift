@@ -1,7 +1,7 @@
 import Foundation
 
 struct ReadingProgress: Codable, Equatable, Sendable {
-    let elapsedSeconds: Int?
+    let totalReadingSeconds: Int?
     let progressPercentage: Int?
     let lastReadAt: Date?
     let finishedAt: Date?
@@ -109,13 +109,13 @@ private struct ProgressResponse: GatewayResponse {
 
     struct Book: Decodable {
         let progress: Int?
-        let recordReadingTime: Int?
+        let readingTime: Int?
         let updateTime: TimeInterval?
         let finishTime: TimeInterval?
 
         var readingProgress: ReadingProgress {
             ReadingProgress(
-                elapsedSeconds: recordReadingTime.flatMap { $0 >= 0 ? $0 : nil },
+                totalReadingSeconds: readingTime.flatMap { $0 > 0 ? $0 : nil },
                 progressPercentage: progress.flatMap { (0...100).contains($0) ? $0 : nil },
                 lastReadAt: readingDate(updateTime),
                 finishedAt: progress == 100 ? readingDate(finishTime) : nil

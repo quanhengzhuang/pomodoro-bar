@@ -116,22 +116,23 @@ struct LibraryView: View {
             }
             .listStyle(.inset)
         case .grid:
+            let bookWidth: CGFloat = 110
             ScrollView {
                 LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: 132, maximum: 178), spacing: 18, alignment: .topLeading)],
+                    columns: [GridItem(.adaptive(minimum: bookWidth, maximum: 132), spacing: 16, alignment: .topLeading)],
                     alignment: .leading,
-                    spacing: 24
+                    spacing: 18
                 ) {
                     ForEach(entries, id: \.element.id) { index, book in
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 5) {
                             BookCover(book: book)
-                                .frame(width: 60)
-                            BookHeading(book: book, reservesTitleSpace: true)
+                                .padding(.bottom, 2)
+                            BookHeading(book: book)
                             BookMetrics(book: book, progress: store.progress(for: book.id))
                             HStack(spacing: 10) { bookActions(for: book, at: index) }
                                 .buttonStyle(.borderless)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(width: bookWidth, alignment: .leading)
                     }
                 }
                 .padding(20)
@@ -337,13 +338,13 @@ private struct BookCover: View {
 
 private struct BookHeading: View {
     let book: ReadingBook
-    var reservesTitleSpace = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(book.title)
                 .font(.body.weight(.medium))
-                .lineLimit(2, reservesSpace: reservesTitleSpace)
+                .lineLimit(2)
+                .help(book.title)
             if let author = book.author, !author.isEmpty {
                 Text(author)
                     .font(.caption)
@@ -363,7 +364,7 @@ private struct BookMetrics: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            if let seconds = progress?.elapsedSeconds {
+            if let seconds = progress?.totalReadingSeconds, seconds > 0 {
                 Text("累计 \(duration(seconds))")
             }
             if let date = [progress?.lastReadAt, book.lastReadAt].compactMap({ $0 }).max() {
@@ -390,7 +391,7 @@ private struct ReadingDataButton: View {
     var body: some View {
         Button {
             isShowingData = true
-            if store.progress(for: book.id) == nil { loadProgress() }
+            if (store.progress(for: book.id)?.totalReadingSeconds ?? 0) <= 0 { loadProgress() }
         } label: {
             Image(systemName: "clock")
         }
@@ -405,8 +406,8 @@ private struct ReadingDataButton: View {
                     ProgressView("正在获取阅读数据…").controlSize(.small)
                 } else if let error = store.progressError(for: book.id) {
                     WarningLabel(message: error)
-                } else if store.hasAPIKey && progress?.elapsedSeconds == nil {
-                    Text("暂无累计阅读时长").foregroundStyle(.secondary)
+                } else if (progress?.totalReadingSeconds ?? 0) <= 0 {
+                    Text("暂无可用时长").foregroundStyle(.secondary)
                 }
                 if store.hasAPIKey {
                     Button("刷新阅读数据", action: loadProgress)
