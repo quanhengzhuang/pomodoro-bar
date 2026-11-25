@@ -49,3 +49,33 @@ enum ReadingList: String, CaseIterable, Identifiable, Sendable {
         self.init(rawValue: host)
     }
 }
+
+extension ReadingList {
+    func widgetBookURL(for bookID: String) -> URL {
+        var components = URLComponents()
+        components.scheme = Self.urlScheme
+        components.host = "book"
+        components.queryItems = [
+            URLQueryItem(name: "list", value: rawValue),
+            URLQueryItem(name: "id", value: bookID)
+        ]
+        return components.url ?? openURL
+    }
+}
+
+struct ReadingWidgetBookLink {
+    let list: ReadingList
+    let bookID: String
+
+    init?(url: URL) {
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.scheme == ReadingList.urlScheme, components.host == "book",
+              components.path.isEmpty, let items = components.queryItems, items.count == 2,
+              let listName = items.first(where: { $0.name == "list" })?.value,
+              let list = ReadingList(rawValue: listName),
+              let bookID = items.first(where: { $0.name == "id" })?.value, !bookID.isEmpty
+        else { return nil }
+        self.list = list
+        self.bookID = bookID
+    }
+}

@@ -1,17 +1,21 @@
 import CoreTransferable
 import SwiftUI
+import UIKit
 import UniformTypeIdentifiers
 
 struct LibraryView: View {
     let store: LibraryStore
     @AppStorage("recentLibraryLayout") private var recentLayout = LibraryLayout.list
     @AppStorage("customLibraryLayout") private var customLayout = LibraryLayout.list
+    @Environment(\.scenePhase) private var scenePhase
     @State private var selection: ReadingList = .custom
     @State private var sheet: LibrarySheet?
+    @State private var pendingWidgetBook: ReadingWidgetBookLink?
+    @State private var couldNotOpenWidgetBook = false
 
     var body: some View {
         TabView(selection: $selection) {
-            ForEach(ReadingList.allCases) { list in
+            ForEach([ReadingList.custom, .recent]) { list in
                 LibraryScreen(
                     store: store,
                     list: list,
@@ -30,9 +34,50 @@ struct LibraryView: View {
             }
         }
         .onOpenURL { url in
-            guard let list = ReadingList(openURL: url) else { return }
+            let bookLink = ReadingWidgetBookLink(url: url)
+            guard let list = bookLink?.list ?? ReadingList(openURL: url) else { return }
             sheet = nil
             selection = list
+            pendingWidgetBook = bookLink
+            openPendingWidgetBook()
+        }
+        .onChange(of: scenePhase) { openPendingWidgetBook() }
+        .alert("无法打开微信读书", isPresented: $couldNotOpenWidgetBook) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("请确认已安装微信读书。")
+        }
+    }
+
+    private func openPendingWidgetBook() {
+        guard scenePhase == .active, let link = pendingWidgetBook else { return }
+        pendingWidgetBook = nil
+
+        let books = link.list == .recent ? store.recentBooks : store.customBooks
+        let book = books.first { $0.id == link.bookID } ?? {
+            let snapshot = WidgetSnapshotStore.load()
+            let widgetBooks = link.list == .recent ? snapshot.recentBooks : snapshot.customBooks
+            return widgetBooks.first { $0.id == link.bookID }
+        }()
+        guard let book else { return }
+        let destinations = [book.readerURL, book.detailURL].compactMap { $0 }
+        guard !destinations.isEmpty else { return }
+
+        Task {
+            let app = UIApplication.shared
+            for url in destinations {
+                switch url.scheme?.lowercased() {
+                case "weread":
+                    if await app.open(url) { return }
+                case "https":
+                    if await app.open(url, options: [.universalLinksOnly: true]) { return }
+                default:
+                    continue
+                }
+            }
+            if let website = destinations.first(where: { $0.scheme?.lowercased() == "https" }),
+               await app.open(website) { return }
+            couldNotOpenWidgetBook = true
         }
     }
 }
@@ -66,6 +111,7 @@ private struct LibraryScreen: View {
     @ScaledMetric(relativeTo: .caption) private var coverColumnWidth = 60.0
     @State private var editMode = EditMode.inactive
     @State private var dragSession = UUID()
+    @State private var highlightedDropTarget: String?
     @State private var bookToRemove: ReadingBook?
 
     private let gridSpacing: CGFloat = 14
@@ -90,14 +136,9 @@ private struct LibraryScreen: View {
                     }
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         if isSorting {
-                            Button("完成") { editMode = .inactive }
+                            Button("完成", action: finishEditing)
                         } else {
                             if list == .custom {
-                                Button("排序") {
-                                    dragSession = UUID()
-                                    editMode = .active
-                                }
-                                .disabled(books.count < 2)
                                 Button("添加书籍", systemImage: "plus", action: openPicker)
                                     .disabled(store.shelfBooks.isEmpty)
                             }
@@ -124,7 +165,7 @@ private struct LibraryScreen: View {
                     Text("《\(book.title)》")
                 }
         }
-        .onDisappear { editMode = .inactive }
+        .onDisappear(perform: finishEditing)
     }
 
     @ViewBuilder
@@ -144,7 +185,7 @@ private struct LibraryScreen: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.leading, coverColumnWidth + 10)
                             .overlay(alignment: .leading) {
-                                BookCover(book: book, opensBook: !isSorting)
+                                BookCover(book: book, opensBook: !isSorting, onHold: list == .custom ? beginEditing : nil)
                                     .fixedSize(horizontal: true, vertical: false)
                             }
 
@@ -165,6 +206,10 @@ private struct LibraryScreen: View {
                     .contextMenu {
                         if list == .recent { bookActions(book, at: index, count: entries.count) }
                     }
+                    .simultaneousGesture(
+                        LongPressGesture().onEnded { _ in beginEditing() },
+                        including: list == .custom && !isSorting ? .all : .none
+                    )
                     .moveDisabled(!isSorting)
                 }
                 .onMove(perform: list == .custom ? { offsets, destination in
@@ -190,7 +235,7 @@ private struct LibraryScreen: View {
     @ViewBuilder
     private func gridBook(_ book: ReadingBook, at index: Int, count: Int) -> some View {
         let tile = VStack(alignment: .leading, spacing: 5) {
-            BookCover(book: book, cornerRadius: 0, opensBook: !isSorting)
+            BookCover(book: book, cornerRadius: 0, opensBook: !isSorting, onHold: list == .custom ? beginEditing : nil)
             Text(book.title)
                 .font(.caption.weight(.medium))
                 .lineLimit(1)
@@ -202,12 +247,56 @@ private struct LibraryScreen: View {
             tile
                 .draggable(DraggedBook(id: book.id, session: dragSession))
                 .dropDestination(for: DraggedBook.self) { items, _ in
+                    highlightedDropTarget = nil
                     guard items.count == 1, let item = items.first, item.session == dragSession else { return false }
                     return moveBook(item.id, to: book.id)
+                } isTargeted: { isTargeted in
+                    if isTargeted {
+                        highlightedDropTarget = book.id
+                    } else if highlightedDropTarget == book.id {
+                        highlightedDropTarget = nil
+                    }
                 }
+                .overlay {
+                    if highlightedDropTarget == book.id {
+                        Rectangle()
+                            .fill(Color.accentColor.opacity(0.16))
+                            .overlay { Rectangle().strokeBorder(Color.accentColor, lineWidth: 2) }
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .overlay(alignment: .topTrailing) {
+                    Menu {
+                        bookActions(book, at: index, count: count)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.caption.weight(.semibold))
+                            .frame(width: 30, height: 30)
+                            .background(.regularMaterial, in: Circle())
+                            .frame(width: 44, height: 44, alignment: .topTrailing)
+                            .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(3)
+                    .accessibilityLabel("《\(book.title)》的书单操作")
+                }
+        } else if list == .custom {
+            tile.simultaneousGesture(LongPressGesture().onEnded { _ in beginEditing() })
         } else {
             tile.contextMenu { bookActions(book, at: index, count: count) }
         }
+    }
+
+    private func beginEditing() {
+        guard !isSorting else { return }
+        dragSession = UUID()
+        editMode = .active
+    }
+
+    private func finishEditing() {
+        highlightedDropTarget = nil
+        editMode = .inactive
     }
 
     private func moveListBook(at offsets: IndexSet, toOffset destination: Int, displayedBooks: [ReadingBook]) {
@@ -295,15 +384,33 @@ private struct LibraryScreen: View {
 }
 
 private struct BookCover: View {
+    @Environment(\.openURL) private var openURL
     let book: ReadingBook
     var cornerRadius: CGFloat = 5
     var opensBook = true
+    var onHold: (() -> Void)?
 
     var body: some View {
         if opensBook, let url = book.destinationURL {
-            Link(destination: url) { artwork }
-                .buttonStyle(.plain)
-                .accessibilityLabel("打开《\(book.title)》")
+            if let onHold {
+                artwork
+                    .gesture(LongPressGesture().exclusively(before: TapGesture()).onEnded { gesture in
+                        switch gesture {
+                        case .first(true): onHold()
+                        case .second: openURL(url)
+                        default: break
+                        }
+                    })
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("打开《\(book.title)》")
+                    .accessibilityAddTraits(.isLink)
+                    .accessibilityAction { openURL(url) }
+                    .accessibilityAction(named: Text("编辑书单"), onHold)
+            } else {
+                Link(destination: url) { artwork }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("打开《\(book.title)》")
+            }
         } else {
             artwork.accessibilityHidden(true)
         }

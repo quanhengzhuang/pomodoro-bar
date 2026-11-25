@@ -20,6 +20,9 @@ final class LibraryStore {
     private var progressRequests: [String: Task<Void, Never>] = [:]
     private var progressErrors: [String: String] = [:]
     @ObservationIgnored private var automaticProgressTask: Task<Void, Never>?
+#if os(iOS)
+    @ObservationIgnored private var widgetCoverTask: Task<Void, Never>?
+#endif
     private var canSaveCache = true
     private var didStart = false
 
@@ -235,18 +238,32 @@ final class LibraryStore {
     }
 
     private func publishWidgets() {
+        let snapshot = ReadingWidgetSnapshot(
+            recentBooks: Array(recentBooks.prefix(4)),
+            customBooks: Array(customBooks.prefix(4)),
+            lastSyncedAt: lastSyncedAt
+        )
         do {
-            try WidgetSnapshotStore.save(ReadingWidgetSnapshot(
-                recentBooks: Array(recentBooks.prefix(4)),
-                customBooks: Array(customBooks.prefix(4)),
-                lastSyncedAt: lastSyncedAt
-            ))
+            try WidgetSnapshotStore.save(snapshot)
             widgetErrorMessage = nil
-            WidgetCenter.shared.reloadTimelines(ofKind: ReadingList.recent.widgetKind)
-            WidgetCenter.shared.reloadTimelines(ofKind: ReadingList.custom.widgetKind)
+            Self.reloadWidgets()
+#if os(iOS)
+            widgetCoverTask?.cancel()
+            widgetCoverTask = Task {
+                if await WidgetSnapshotStore.prefetchCovers(for: snapshot), !Task.isCancelled {
+                    WidgetSnapshotStore.trimCoverCache(keeping: snapshot)
+                    Self.reloadWidgets()
+                }
+            }
+#endif
         } catch {
             widgetErrorMessage = "无法更新桌面小组件，请检查应用和扩展的 App Group 设置。"
         }
+    }
+
+    private static func reloadWidgets() {
+        WidgetCenter.shared.reloadTimelines(ofKind: ReadingList.recent.widgetKind)
+        WidgetCenter.shared.reloadTimelines(ofKind: ReadingList.custom.widgetKind)
     }
 
     private func syncErrorMessage(for error: Error) -> String {

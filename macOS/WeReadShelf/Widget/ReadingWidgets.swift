@@ -2,6 +2,10 @@ import Foundation
 import SwiftUI
 import WidgetKit
 
+#if os(iOS)
+import UIKit
+#endif
+
 @main
 struct ReadingWidgetBundle: WidgetBundle {
     var body: some Widget {
@@ -21,9 +25,14 @@ private struct CustomBookListWidget: Widget {
 @MainActor
 private func readingConfiguration(for list: ReadingList) -> some WidgetConfiguration {
     StaticConfiguration(kind: list.widgetKind, provider: ReadingTimelineProvider(list: list)) { entry in
+#if os(iOS)
+        CoverReadingWidgetView(list: list, entry: entry)
+            .containerBackground(.background, for: .widget)
+#else
         ReadingWidgetView(list: list, entry: entry)
             .containerBackground(.background, for: .widget)
             .widgetURL(list.openURL)
+#endif
     }
     .configurationDisplayName(list.title)
     .description(list == .recent ? "查看上次同步的阅读记录。" : "查看你在应用里选好的书。")
@@ -34,6 +43,18 @@ private struct ReadingEntry: TimelineEntry {
     let date: Date
     let books: [ReadingBook]
     let hasSynced: Bool
+#if os(iOS)
+    var covers: [URL: UIImage] = [:]
+#endif
+
+    func emptyMessage(for list: ReadingList) -> String {
+        switch list {
+        case .recent:
+            hasSynced ? "书架里暂无阅读记录。" : "打开应用同步书架。"
+        case .custom:
+            "打开应用，从书架选书。"
+        }
+    }
 }
 
 private struct ReadingTimelineProvider: TimelineProvider {
@@ -44,18 +65,29 @@ private struct ReadingTimelineProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (ReadingEntry) -> Void) {
-        completion(context.isPreview ? previewEntry() : savedEntry())
+        completion(context.isPreview ? previewEntry() : savedEntry(for: context.family))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<ReadingEntry>) -> Void) {
         // The app requests a new timeline after a sync or a list edit.
-        completion(Timeline(entries: [savedEntry()], policy: .never))
+        completion(Timeline(entries: [savedEntry(for: context.family)], policy: .never))
     }
 
-    private func savedEntry() -> ReadingEntry {
+    private func savedEntry(for family: WidgetFamily) -> ReadingEntry {
         let snapshot = WidgetSnapshotStore.load()
         let books = list == .recent ? snapshot.recentBooks : snapshot.customBooks
+#if os(iOS)
+        let visibleBooks = Array(books.prefix(family == .systemSmall ? 1 : 4))
+        var entry = ReadingEntry(date: .now, books: visibleBooks, hasSynced: snapshot.lastSyncedAt != nil)
+        for book in visibleBooks {
+            guard let url = book.coverURL, entry.covers[url] == nil,
+                  let data = WidgetSnapshotStore.coverData(for: url), let cover = UIImage(data: data) else { continue }
+            entry.covers[url] = cover
+        }
+        return entry
+#else
         return ReadingEntry(date: .now, books: Array(books.prefix(4)), hasSynced: snapshot.lastSyncedAt != nil)
+#endif
     }
 
     private func previewEntry() -> ReadingEntry {
@@ -77,6 +109,128 @@ private struct ReadingTimelineProvider: TimelineProvider {
     }
 }
 
+#if os(iOS)
+private struct CoverReadingWidgetView: View {
+    @Environment(\.widgetFamily) private var family
+    @ScaledMetric(relativeTo: .caption2) private var mediumCaptionHeight = 14.0
+
+    let list: ReadingList
+    let entry: ReadingEntry
+
+    private let spacing: CGFloat = 8
+    private let coverAspect: CGFloat = 0.7
+    private var accent: Color { list == .recent ? .indigo : .teal }
+
+    private var widgetDestination: URL {
+        guard family == .systemSmall, let book = entry.books.first, book.destinationURL != nil else {
+            return list.openURL
+        }
+        return list.widgetBookURL(for: book.id)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: spacing) {
+            Label {
+                Text(list.title)
+            } icon: {
+                Image(systemName: list.iconName)
+                    .foregroundStyle(accent)
+                    .widgetAccentable()
+            }
+            .font(.system(.caption, weight: .semibold))
+            .accessibilityAddTraits(.isHeader)
+
+            if entry.books.isEmpty {
+                Text(entry.emptyMessage(for: list))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else if family == .systemSmall, let book = entry.books.first {
+                smallTile(book)
+            } else {
+                GeometryReader { geometry in
+                    let width = max(0, (geometry.size.width - spacing * 3) / 4)
+                    let height = min(width / coverAspect, max(0, geometry.size.height - mediumCaptionHeight - 4))
+                    HStack(alignment: .top, spacing: spacing) {
+                        ForEach(entry.books.prefix(4)) { book in
+                            mediumTile(book, width: width, coverHeight: height)
+                        }
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .widgetURL(widgetDestination)
+    }
+
+    private func smallTile(_ book: ReadingBook) -> some View {
+        VStack(spacing: 4) {
+            GeometryReader { geometry in
+                let height = min(geometry.size.width / coverAspect, geometry.size.height)
+                sizedCover(book, height: height)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            Text(book.title)
+                .font(.system(.caption, weight: .medium))
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .privacySensitive(book.isPrivate)
+    }
+
+    private func mediumTile(_ book: ReadingBook, width: CGFloat, coverHeight: CGFloat) -> some View {
+        let tile = VStack(spacing: 4) {
+            sizedCover(book, height: coverHeight)
+            Text(book.title)
+                .font(.system(.caption2, weight: .medium))
+                .lineLimit(1)
+        }
+        .frame(width: width)
+
+        return Group {
+            if book.destinationURL != nil {
+                Link(destination: list.widgetBookURL(for: book.id)) { tile }
+                    .buttonStyle(.plain)
+            } else {
+                tile
+            }
+        }
+        .privacySensitive(book.isPrivate)
+    }
+
+    private func sizedCover(_ book: ReadingBook, height: CGFloat) -> some View {
+        cover(for: book)
+            .frame(width: height * coverAspect, height: height)
+            .clipped()
+            .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private func cover(for book: ReadingBook) -> some View {
+        if let url = book.coverURL, let cover = entry.covers[url] {
+            let image = Image(uiImage: cover).resizable()
+            if #available(iOS 18.0, *) {
+                image.widgetAccentedRenderingMode(.fullColor).scaledToFit()
+            } else {
+                image.scaledToFit()
+            }
+        } else {
+            ZStack(alignment: .leading) {
+                Rectangle().fill(accent.opacity(0.14))
+                Rectangle().fill(accent.opacity(0.48)).frame(width: 2)
+                Text(book.title)
+                    .font(.system(.caption2, design: .serif, weight: .semibold))
+                    .multilineTextAlignment(.center)
+                    .lineLimit(3)
+                    .foregroundStyle(.primary)
+                    .padding(6)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+    }
+}
+#else
 private struct ReadingWidgetView: View {
     @Environment(\.widgetFamily) private var family
 
@@ -86,15 +240,6 @@ private struct ReadingWidgetView: View {
     private var accent: Color { list == .recent ? .indigo : .teal }
     private var dateFormat: Date.ISO8601FormatStyle {
         Date.ISO8601FormatStyle(timeZone: .autoupdatingCurrent).year().month().day()
-    }
-
-    private var emptyMessage: String {
-        switch list {
-        case .recent:
-            entry.hasSynced ? "书架里暂无阅读记录。" : "打开应用同步书架。"
-        case .custom:
-            "打开应用，从书架选书。"
-        }
     }
 
     var body: some View {
@@ -110,7 +255,7 @@ private struct ReadingWidgetView: View {
             .accessibilityAddTraits(.isHeader)
 
             if entry.books.isEmpty {
-                Text(emptyMessage)
+                Text(entry.emptyMessage(for: list))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
@@ -162,3 +307,4 @@ private struct ReadingWidgetView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
+#endif
