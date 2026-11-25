@@ -52,6 +52,7 @@ private struct LibraryScreen: View {
     let openSettings: () -> Void
     let openPicker: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .caption) private var coverColumnWidth = 60.0
     @State private var bookToRemove: ReadingBook?
 
     private var books: [ReadingBook] {
@@ -108,29 +109,50 @@ private struct LibraryScreen: View {
         } else if layout == .list {
             List {
                 ForEach(entries, id: \.element.id) { index, book in
-                    HStack(alignment: .top, spacing: 12) {
-                        BookCover(book: book).frame(width: 46)
-                        BookDetails(book: book, progress: store.progress(for: book.id))
+                    HStack(spacing: 10) {
+                        BookDetails(book: book, progress: store.progress(for: book.id), compact: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        actions(book, at: index, count: entries.count)
+                            .padding(.leading, coverColumnWidth + 10)
+                            .overlay(alignment: .leading) {
+                                BookCover(book: book)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+
+                        if list == .custom {
+                            Menu {
+                                bookActions(book, at: index, count: entries.count)
+                            } label: {
+                                Image(systemName: "ellipsis.circle")
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(.rect)
+                            }
+                            .buttonStyle(.borderless)
+                            .accessibilityLabel("《\(book.title)》的书单操作")
+                        }
                     }
                     .padding(.vertical, 4)
+                    .contentShape(.rect)
+                    .contextMenu {
+                        if list == .recent { bookActions(book, at: index, count: entries.count) }
+                    }
                 }
             }
             .listStyle(.plain)
         } else {
-            let columns = dynamicTypeSize.isAccessibilitySize
-                ? [GridItem(.flexible())]
-                : [GridItem(.adaptive(minimum: 104), spacing: 14, alignment: .topLeading)]
+            let columnCount = dynamicTypeSize.isAccessibilitySize ? 1 : 4
+            let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 10), count: columnCount)
             ScrollView {
-                LazyVGrid(columns: columns, alignment: .leading, spacing: 22) {
+                LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                     ForEach(entries, id: \.element.id) { index, book in
-                        VStack(alignment: .leading, spacing: 7) {
-                            BookCover(book: book)
-                            BookDetails(book: book, progress: store.progress(for: book.id))
-                            actions(book, at: index, count: entries.count)
+                        VStack(alignment: .leading, spacing: 5) {
+                            BookCover(book: book, cornerRadius: 0)
+                            Text(book.title)
+                                .font(.footnote.weight(.medium))
+                                .lineLimit(1)
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(.rect)
+                        .contextMenu { bookActions(book, at: index, count: entries.count) }
                     }
                 }
                 .padding(.horizontal, 18)
@@ -172,27 +194,23 @@ private struct LibraryScreen: View {
         }
     }
 
-    private func actions(_ book: ReadingBook, at index: Int, count: Int) -> some View {
-        HStack(spacing: 0) {
-            if store.hasAPIKey {
-                ReadingTimeButton(store: store, book: book)
+    @ViewBuilder
+    private func bookActions(_ book: ReadingBook, at index: Int, count: Int) -> some View {
+        if store.hasAPIKey {
+            let isLoading = store.isLoadingProgress(for: book.id)
+            Button(isLoading ? "正在刷新阅读时长…" : "刷新阅读时长", systemImage: "arrow.clockwise") {
+                Task { await store.loadProgress(for: book.id) }
             }
-            if list == .custom {
-                Menu {
-                    Button("上移", systemImage: "chevron.up") { store.moveCustomBook(book.id, by: -1) }
-                        .disabled(index == 0)
-                    Button("下移", systemImage: "chevron.down") { store.moveCustomBook(book.id, by: 1) }
-                        .disabled(index == count - 1)
-                    Button("移出", systemImage: "minus.circle", role: .destructive) { bookToRemove = book }
-                } label: {
-                    Image(systemName: "ellipsis.circle")
-                        .frame(width: 44, height: 44)
-                        .contentShape(.rect)
-                }
-                .accessibilityLabel("《\(book.title)》的书单操作")
-            }
+            .disabled(isLoading)
+            .accessibilityHint(store.progressError(for: book.id) ?? "")
         }
-        .buttonStyle(.borderless)
+        if list == .custom {
+            Button("上移", systemImage: "chevron.up") { store.moveCustomBook(book.id, by: -1) }
+                .disabled(index == 0)
+            Button("下移", systemImage: "chevron.down") { store.moveCustomBook(book.id, by: 1) }
+                .disabled(index == count - 1)
+            Button("移出", systemImage: "minus.circle", role: .destructive) { bookToRemove = book }
+        }
     }
 
     @ViewBuilder
@@ -211,6 +229,7 @@ private struct LibraryScreen: View {
 
 private struct BookCover: View {
     let book: ReadingBook
+    var cornerRadius: CGFloat = 5
 
     var body: some View {
         if let url = book.destinationURL {
@@ -233,7 +252,7 @@ private struct BookCover: View {
                     Image(systemName: "book.closed").foregroundStyle(.tint)
                 }
             }
-            .clipShape(.rect(cornerRadius: 5))
+            .clipShape(.rect(cornerRadius: cornerRadius))
             .contentShape(.rect)
     }
 }
@@ -241,23 +260,26 @@ private struct BookCover: View {
 private struct BookDetails: View {
     let book: ReadingBook
     var progress: ReadingProgress?
+    var compact = false
 
     private static let dateFormat = Date.ISO8601FormatStyle(timeZone: .autoupdatingCurrent)
         .year().month().day().dateSeparator(.dash)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(book.title).font(.headline).lineLimit(2)
+            Text(book.title).font(.headline).lineLimit(compact ? 1 : 2)
             if let author = book.author, !author.isEmpty {
-                Text(author).font(.subheadline).foregroundStyle(.secondary)
+                Text(author).font(compact ? .caption : .subheadline).foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             if let seconds = progress?.totalReadingSeconds, seconds > 0 {
                 Text("累计 \(duration(seconds))").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    .lineLimit(compact ? 1 : nil)
             }
             if let date = [progress?.lastReadAt, book.lastReadAt].compactMap({ $0 }).max() {
                 Text("最近阅读 \(date.formatted(Self.dateFormat))")
                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    .lineLimit(compact ? 1 : nil)
             }
         }
     }
@@ -267,34 +289,6 @@ private struct BookDetails: View {
         if minutes == 0 { return "\(seconds) 秒" }
         if minutes < 60 { return "\(minutes) 分钟" }
         return "\(minutes / 60) 小时 \(minutes % 60) 分钟"
-    }
-}
-
-private struct ReadingTimeButton: View {
-    let store: LibraryStore
-    let book: ReadingBook
-
-    var body: some View {
-        let isLoading = store.isLoadingProgress(for: book.id)
-        let error = store.progressError(for: book.id)
-        Button {
-            Task { await store.loadProgress(for: book.id) }
-        } label: {
-            Group {
-                if isLoading {
-                    ProgressView().controlSize(.small)
-                } else {
-                    Image(systemName: error == nil ? "clock" : "exclamationmark.circle")
-                        .foregroundStyle(error == nil ? Color.accentColor : Color.orange)
-                }
-            }
-            .frame(width: 44, height: 44)
-            .contentShape(.rect)
-        }
-        .disabled(isLoading)
-        .accessibilityLabel("刷新《\(book.title)》的阅读时长")
-        .accessibilityHint(error ?? "")
-        .accessibilityValue(isLoading ? "正在刷新" : "")
     }
 }
 
