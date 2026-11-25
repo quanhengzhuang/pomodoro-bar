@@ -20,7 +20,8 @@ final class LibraryStore {
     private var progressRequests: [String: Task<Void, Never>] = [:]
     private var progressErrors: [String: String] = [:]
     @ObservationIgnored private var automaticProgressTask: Task<Void, Never>?
-    @ObservationIgnored private var automaticProgressQueue: [String] = []
+    @ObservationIgnored private var automaticProgressQueue: [AutomaticBookRequest] = []
+    @ObservationIgnored private var activeAutomaticRequest: AutomaticBookRequest?
 #if os(iOS)
     @ObservationIgnored private var widgetCoverTask: Task<Void, Never>?
 #endif
@@ -53,6 +54,7 @@ final class LibraryStore {
             library.shelfBooks = []
             library.lastSyncedAt = nil
             library.readingProgress = nil
+            library.bookMetadata = nil
             library.customBooks = library.customBooks.map(\.withoutLastReadDate)
         }
     }
@@ -116,6 +118,11 @@ final class LibraryStore {
         return library.readingProgress?[bookID]
     }
 
+    func bookMetadata(for bookID: String) -> BookMetadata? {
+        guard let credential, credential.id == library.credentialID else { return nil }
+        return library.bookMetadata?[bookID]?.value
+    }
+
     func isLoadingProgress(for bookID: String) -> Bool {
         progressRequests[bookID] != nil
     }
@@ -173,10 +180,12 @@ final class LibraryStore {
             automaticProgressTask?.cancel()
             automaticProgressTask = nil
             automaticProgressQueue.removeAll()
+            activeAutomaticRequest = nil
             for request in progressRequests.values { request.cancel() }
             progressRequests.removeAll()
             progressErrors.removeAll()
             updated.readingProgress = nil
+            updated.bookMetadata = nil
             updated.customBooks = updated.customBooks.map(\.withoutLastReadDate)
         }
         updated.credentialID = credential.id
@@ -195,29 +204,71 @@ final class LibraryStore {
         guard let credential, credential.id == library.credentialID else { return }
 #if os(iOS)
         let books = customBooks + recentBooks
+        let now = Date.now
 #else
         let books = Array(recentBooks.prefix(5))
 #endif
         var seen = Set<String>()
-        let pending = Set(automaticProgressQueue)
-        let bookIDs = books.map(\.id).filter { bookID in
-            seen.insert(bookID).inserted && progressRequests[bookID] == nil &&
-                (refreshCached || pending.contains(bookID) || library.readingProgress?[bookID] == nil)
+        let pendingProgress = Set(automaticProgressQueue.filter(\.refreshProgress).map(\.bookID))
+        let requests = books.compactMap { book -> AutomaticBookRequest? in
+            let bookID = book.id
+            guard seen.insert(bookID).inserted else { return nil }
+            let isActive = activeAutomaticRequest?.bookID == bookID
+            let progressRequested = progressRequests[bookID] != nil ||
+                (isActive && activeAutomaticRequest?.refreshProgress == true)
+            let refreshProgress = !progressRequested &&
+                (refreshCached || pendingProgress.contains(bookID) || library.readingProgress?[bookID] == nil)
+#if os(iOS)
+            let refreshMetadata = !isActive && needsBookMetadata(for: bookID, at: now)
+#else
+            let refreshMetadata = false
+#endif
+            guard refreshProgress || refreshMetadata else { return nil }
+            return AutomaticBookRequest(bookID: bookID, refreshProgress: refreshProgress)
         }
-        automaticProgressQueue = Array(bookIDs.reversed())
+        automaticProgressQueue = Array(requests.reversed())
         guard automaticProgressTask == nil, !automaticProgressQueue.isEmpty else { return }
         let credentialID = credential.id
         automaticProgressTask = Task { [weak self] in
-            while !Task.isCancelled, let self, self.credential?.id == credentialID,
-                  let bookID = self.automaticProgressQueue.popLast() {
-                await self.loadProgress(for: bookID)
+            while !Task.isCancelled, let self, let credential = self.credential, credential.id == credentialID,
+                  let request = self.automaticProgressQueue.popLast() {
+                self.activeAutomaticRequest = request
+                if request.refreshProgress {
+                    await self.loadProgress(for: request.bookID)
 #if os(iOS)
-                try? await Task.sleep(for: .milliseconds(250))
+                    try? await Task.sleep(for: .milliseconds(250))
+#endif
+                }
+#if os(iOS)
+                if !Task.isCancelled, self.needsBookMetadata(for: request.bookID, at: .now) {
+                    await self.fetchBookMetadata(for: request.bookID, credential: credential)
+                    try? await Task.sleep(for: .milliseconds(250))
+                }
 #endif
             }
-            if !Task.isCancelled { self?.automaticProgressTask = nil }
+            if !Task.isCancelled {
+                self?.activeAutomaticRequest = nil
+                self?.automaticProgressTask = nil
+            }
         }
     }
+
+#if os(iOS)
+    private func needsBookMetadata(for bookID: String, at now: Date) -> Bool {
+        guard let cached = library.bookMetadata?[bookID] else { return true }
+        return now.timeIntervalSince(cached.fetchedAt) >= 24 * 60 * 60 || now < cached.fetchedAt
+    }
+
+    private func fetchBookMetadata(for bookID: String, credential: APIKeyRecord) async {
+        guard let metadata = try? await api.fetchBookMetadata(bookID: bookID, apiKey: credential.key),
+              !Task.isCancelled, self.credential?.id == credential.id else { return }
+        var updated = library
+        if updated.bookMetadata == nil { updated.bookMetadata = [:] }
+        updated.bookMetadata?[bookID] = CachedBookMetadata(value: metadata, fetchedAt: .now)
+        saveCache(updated)
+        library = updated
+    }
+#endif
 
     private func fetchProgress(for bookID: String, credential: APIKeyRecord) async {
         defer {
@@ -309,12 +360,23 @@ private extension ReadingBook {
     }
 }
 
+private struct AutomaticBookRequest {
+    let bookID: String
+    let refreshProgress: Bool
+}
+
+private struct CachedBookMetadata: Codable {
+    let value: BookMetadata
+    let fetchedAt: Date
+}
+
 private struct CachedLibrary: Codable {
     var credentialID: UUID?
     var shelfBooks: [ReadingBook] = []
     var customBooks: [ReadingBook] = []
     var lastSyncedAt: Date?
     var readingProgress: [String: ReadingProgress]?
+    var bookMetadata: [String: CachedBookMetadata]?
 
     private static var fileURL: URL {
         URL.applicationSupportDirectory.appending(path: "WeRead/library.json")

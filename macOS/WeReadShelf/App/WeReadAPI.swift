@@ -7,6 +7,11 @@ struct ReadingProgress: Codable, Equatable, Sendable {
     let finishedAt: Date?
 }
 
+struct BookMetadata: Codable, Sendable {
+    let recommendation: Double?
+    let wordCount: Int?
+}
+
 struct WeReadAPI {
     struct Shelf {
         let books: [ReadingBook]
@@ -60,6 +65,14 @@ struct WeReadAPI {
         return book.readingProgress
     }
 
+    func fetchBookMetadata(bookID: String, apiKey: String) async throws -> BookMetadata {
+        let response: BookInfoResponse = try await request(
+            "/book/info", parameters: ["bookId": bookID], apiKey: apiKey
+        )
+        guard response.bookId == bookID else { throw Failure.unexpectedResponse }
+        return response.metadata
+    }
+
     private func request<Response: GatewayResponse>(
         _ endpoint: String, parameters: [String: String] = [:], apiKey: String
     ) async throws -> Response {
@@ -100,6 +113,35 @@ private struct ShelfResponse: GatewayResponse {
     }
 
     struct UpgradeInfo: Decodable {}
+}
+
+private struct BookInfoResponse: GatewayResponse {
+    let errcode: Int?
+    let bookId: String?
+    let metadata: BookMetadata
+
+    private enum CodingKeys: String, CodingKey {
+        case errcode, bookId, newRating, newRatingCount, wordCount
+    }
+
+    init(from decoder: any Decoder) throws {
+        let fields = try decoder.container(keyedBy: CodingKeys.self)
+        errcode = try fields.decodeIfPresent(Int.self, forKey: .errcode)
+        bookId = try fields.decodeIfPresent(String.self, forKey: .bookId)
+        let ratingCount = try? fields.decode(Int.self, forKey: .newRatingCount)
+        let wordCount = try? fields.decode(Int.self, forKey: .wordCount)
+        let rating = try? fields.decode(Double.self, forKey: .newRating)
+        metadata = BookMetadata(
+            recommendation: ratingCount == 0 ? nil : rating.flatMap(Self.recommendationPercent),
+            wordCount: wordCount.flatMap { $0 > 0 ? $0 : nil }
+        )
+    }
+
+    private static func recommendationPercent(_ rating: Double) -> Double? {
+        // Older gateway responses encode the percentage in tenths (WeChatReading issue #8).
+        guard (0...1_000).contains(rating) else { return nil }
+        return rating > 100 ? rating / 10 : rating
+    }
 }
 
 private struct ProgressResponse: GatewayResponse {

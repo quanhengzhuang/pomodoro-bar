@@ -27,7 +27,7 @@ private func readingConfiguration(for list: ReadingList) -> some WidgetConfigura
     StaticConfiguration(kind: list.widgetKind, provider: ReadingTimelineProvider(list: list)) { entry in
 #if os(iOS)
         CoverReadingWidgetView(list: list, entry: entry)
-            .containerBackground(Color(uiColor: .secondarySystemBackground), for: .widget)
+            .containerBackground(Color.readingShelfBackground, for: .widget)
 #else
         ReadingWidgetView(list: list, entry: entry)
             .containerBackground(.background, for: .widget)

@@ -1,4 +1,15 @@
 import Foundation
+#if os(iOS)
+import SwiftUI
+import UIKit
+
+extension Color {
+    static let readingShelfBackground = Color(uiColor: UIColor { traits in
+        if traits.userInterfaceStyle == .dark { return .secondarySystemBackground }
+        return UIColor(red: 244.0 / 255, green: 245.0 / 255, blue: 247.0 / 255, alpha: 1)
+    })
+}
+#endif
 
 struct ReadingBook: Codable, Equatable, Identifiable, Sendable {
     let id: String

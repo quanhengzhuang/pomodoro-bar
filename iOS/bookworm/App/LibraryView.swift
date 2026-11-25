@@ -137,7 +137,7 @@ private struct LibraryScreen: View {
     let presentShare: (BookListShareExport) -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.layoutDirection) private var layoutDirection
-    @ScaledMetric(relativeTo: .caption) private var listCoverHeight: CGFloat = 72
+    @ScaledMetric(relativeTo: .caption) private var listCoverHeight: CGFloat = 84
     @State private var editMode = EditMode.inactive
     @State private var dragSession = UUID()
     @State private var insertionTarget: GridInsertionTarget?
@@ -158,7 +158,7 @@ private struct LibraryScreen: View {
         NavigationStack {
             collection
                 .scrollContentBackground(.hidden)
-                .background(Color(uiColor: .secondarySystemBackground).ignoresSafeArea())
+                .background(Color.readingShelfBackground.ignoresSafeArea())
                 .environment(\.editMode, $editMode)
                 .navigationTitle(list.title)
                 .refreshable { await store.refresh() }
@@ -221,9 +221,7 @@ private struct LibraryScreen: View {
         guard shareTask == nil, !books.isEmpty else { return }
         let exportLayout: BookListShareLayout = layout == .list ? .list : .grid
         let items = books.map { book in
-            BookListShareItem(book: book, details: BookDetails.shareDetails(
-                for: book, progress: store.progress(for: book.id)
-            ))
+            BookListShareItem(book: book, details: details(for: book).shareDetails)
         }
         shareTask = Task {
             defer { shareTask = nil }
@@ -238,6 +236,14 @@ private struct LibraryScreen: View {
                 if !Task.isCancelled { shareFailed = true }
             }
         }
+    }
+
+    private func details(for book: ReadingBook) -> BookDetails {
+        let metadata = store.bookMetadata(for: book.id)
+        return BookDetails(
+            book: book, progress: store.progress(for: book.id), recommendation: metadata?.recommendation,
+            wordCount: metadata?.wordCount, compact: true
+        )
     }
 
     @ViewBuilder
@@ -256,7 +262,7 @@ private struct LibraryScreen: View {
                         BookCover(book: book, opensBook: !isSorting, onHold: list == .custom ? beginEditing : nil)
                             .frame(width: listCoverHeight * BookCover.aspectRatio, height: listCoverHeight)
 
-                        BookDetails(book: book, progress: store.progress(for: book.id), compact: true)
+                        details(for: book)
                             .frame(maxWidth: .infinity, alignment: .leading)
 
                         if list == .custom && !isSorting {
@@ -282,6 +288,7 @@ private struct LibraryScreen: View {
                     )
                     .moveDisabled(!isSorting)
                     .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
                 }
                 .onMove(perform: list == .custom ? { offsets, destination in
                     moveListBook(at: offsets, toOffset: destination, displayedBooks: books)
@@ -557,8 +564,11 @@ private struct BookCover: View {
 }
 
 private struct BookDetails: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let book: ReadingBook
     var progress: ReadingProgress?
+    var recommendation: Double?
+    var wordCount: Int?
     var compact = false
 
     private static let dateFormat = Date.ISO8601FormatStyle(timeZone: .autoupdatingCurrent)
@@ -572,31 +582,45 @@ private struct BookDetails: View {
                 Text(author).font(compact ? .caption : .subheadline).foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            if let time = Self.readingTimeText(progress) {
-                Text(time).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                    .lineLimit(compact ? 1 : nil)
-            }
-            if let lastRead = Self.lastReadText(book, progress) {
-                Text(lastRead)
-                    .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                    .lineLimit(compact ? 1 : nil)
+            ForEach(metadataLines, id: \.self) { line in
+                Text(line).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                    .lineLimit(compact && !dynamicTypeSize.isAccessibilitySize ? 1 : nil)
+                    .minimumScaleFactor(0.9)
             }
         }
     }
 
-    static func shareDetails(for book: ReadingBook, progress: ReadingProgress?) -> [String] {
-        [book.author, readingTimeText(progress), lastReadText(book, progress)]
-            .compactMap { $0 }.filter { !$0.isEmpty }
+    var shareDetails: [String] {
+        [book.author].compactMap { $0 }.filter { !$0.isEmpty } + metadataLines
     }
 
-    private static func lastReadText(_ book: ReadingBook, _ progress: ReadingProgress?) -> String? {
+    private var metadataLines: [String] {
+        let catalog = [recommendationText, wordCountText].compactMap { $0 }
+        let reading = [lastReadText, readingTimeText].compactMap { $0 }
+        return [catalog, reading].filter { !$0.isEmpty }.map { $0.joined(separator: "  |  ") }
+    }
+
+    private var recommendationText: String? {
+        guard let recommendation else { return nil }
+        let percent = (recommendation / 100).formatted(.percent.precision(.fractionLength(0...1)))
+        return "推荐值 \(percent)"
+    }
+
+    private var wordCountText: String? {
+        guard let wordCount else { return nil }
+        if wordCount < 10_000 { return "\(wordCount.formatted()) 字" }
+        let tenThousands = (Double(wordCount) / 10_000).formatted(.number.precision(.fractionLength(0...1)))
+        return "\(tenThousands) 万字"
+    }
+
+    private var lastReadText: String? {
         guard let date = [progress?.lastReadAt, book.lastReadAt].compactMap({ $0 }).max() else { return nil }
-        return "最近阅读 \(date.formatted(dateFormat))"
+        return date.formatted(Self.dateFormat)
     }
 
-    private static func readingTimeText(_ progress: ReadingProgress?) -> String? {
+    private var readingTimeText: String? {
         guard let seconds = progress?.totalReadingSeconds, seconds > 0 else { return nil }
-        return "累计 \(duration(seconds))"
+        return "累计 \(Self.duration(seconds))"
     }
 
     private static func duration(_ seconds: Int) -> String {
