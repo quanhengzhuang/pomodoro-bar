@@ -314,6 +314,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/WeReadShelf.entitlements;
+				DEVELOPMENT_TEAM = FC6L2N43X9;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -327,6 +328,7 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = App/WeReadShelf.entitlements;
+				DEVELOPMENT_TEAM = FC6L2N43X9;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -340,6 +342,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = Widget/WeReadShelfWidgets.entitlements;
+				DEVELOPMENT_TEAM = FC6L2N43X9;
 				INFOPLIST_FILE = Widget/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = com.quanhengzhuang.WeRead.iOS.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -352,6 +355,7 @@
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
 				CODE_SIGN_ENTITLEMENTS = Widget/WeReadShelfWidgets.entitlements;
+				DEVELOPMENT_TEAM = FC6L2N43X9;
 				INFOPLIST_FILE = Widget/Info.plist;
 				PRODUCT_BUNDLE_IDENTIFIER = com.quanhengzhuang.WeRead.iOS.Widgets;
 				PRODUCT_NAME = "$(TARGET_NAME)";
