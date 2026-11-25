@@ -116,7 +116,7 @@ private struct CoverReadingWidgetView: View {
     let list: ReadingList
     let entry: ReadingEntry
 
-    private let spacing: CGFloat = 8
+    private let coverSpacing: CGFloat = 10
     private let coverAspect: CGFloat = 0.7
     private var accent: Color { list == .recent ? .indigo : .teal }
 
@@ -128,7 +128,7 @@ private struct CoverReadingWidgetView: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: spacing) {
+        VStack(alignment: .leading, spacing: 7) {
             Text(list.title)
                 .font(.system(.subheadline, design: .serif, weight: .semibold))
                 .accessibilityAddTraits(.isHeader)
@@ -145,9 +145,9 @@ private struct CoverReadingWidgetView: View {
                             .privacySensitive(book.isPrivate)
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
-                        let width = max(0, (geometry.size.width - spacing * 3) / 4)
+                        let width = max(0, (geometry.size.width - coverSpacing * 3) / 4)
                         let height = min(width / coverAspect, geometry.size.height)
-                        HStack(spacing: spacing) {
+                        HStack(spacing: coverSpacing) {
                             ForEach(entry.books.prefix(4)) { book in
                                 mediumTile(book, coverHeight: height)
                                     .frame(width: width)
@@ -178,9 +178,11 @@ private struct CoverReadingWidgetView: View {
     }
 
     private func sizedCover(_ book: ReadingBook, height: CGFloat) -> some View {
-        cover(for: book)
+        let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        return cover(for: book)
             .frame(width: height * coverAspect, height: height)
-            .clipped()
+            .clipShape(shape)
+            .overlay { shape.strokeBorder(accent.opacity(0.28), lineWidth: 1) }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(book.title)
     }
