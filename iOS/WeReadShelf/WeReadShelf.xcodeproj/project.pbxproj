@@ -1,0 +1,350 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		E10000000000000000000001 /* WeReadShelfApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000001 /* WeReadShelfApp.swift */; };
+		E10000000000000000000002 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000002 /* LibraryView.swift */; };
+		E10000000000000000000003 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000003 /* LibraryStore.swift */; };
+		E10000000000000000000004 /* WeReadAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000004 /* WeReadAPI.swift */; };
+		E10000000000000000000005 /* ReadingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000005 /* ReadingModels.swift */; };
+		E10000000000000000000006 /* WidgetSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000006 /* WidgetSnapshotStore.swift */; };
+		E10000000000000000000007 /* ReadingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000005 /* ReadingModels.swift */; };
+		E10000000000000000000008 /* WidgetSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000006 /* WidgetSnapshotStore.swift */; };
+		E10000000000000000000009 /* ReadingWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000007 /* ReadingWidgets.swift */; };
+		E1000000000000000000000A /* WeReadShelfWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = E2000000000000000000000D /* WeReadShelfWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E1000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000000E /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		E30000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = E40000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E50000000000000000000002;
+			remoteInfo = WeReadShelfWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		E60000000000000000000003 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (E1000000000000000000000A /* WeReadShelfWidgets.appex in Embed App Extensions */, );
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		E20000000000000000000001 /* WeReadShelfApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeReadShelfApp.swift; sourceTree = "<group>"; };
+		E20000000000000000000002 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
+		E20000000000000000000003 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../macOS/WeReadShelf/App/LibraryStore.swift; sourceTree = SOURCE_ROOT; };
+		E20000000000000000000004 /* WeReadAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../macOS/WeReadShelf/App/WeReadAPI.swift; sourceTree = SOURCE_ROOT; };
+		E20000000000000000000005 /* ReadingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../macOS/WeReadShelf/Shared/ReadingModels.swift; sourceTree = SOURCE_ROOT; };
+		E20000000000000000000006 /* WidgetSnapshotStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../macOS/WeReadShelf/Shared/WidgetSnapshotStore.swift; sourceTree = SOURCE_ROOT; };
+		E20000000000000000000007 /* ReadingWidgets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../macOS/WeReadShelf/Widget/ReadingWidgets.swift; sourceTree = SOURCE_ROOT; };
+		E20000000000000000000008 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		E20000000000000000000009 /* WeReadShelf.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WeReadShelf.entitlements; sourceTree = "<group>"; };
+		E2000000000000000000000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		E2000000000000000000000B /* WeReadShelfWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WeReadShelfWidgets.entitlements; sourceTree = "<group>"; };
+		E2000000000000000000000C /* WeReadShelf.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WeReadShelf.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E2000000000000000000000D /* WeReadShelfWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WeReadShelfWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		E2000000000000000000000E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		E60000000000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E60000000000000000000005 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		E70000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				E70000000000000000000002 /* App */,
+				E70000000000000000000003 /* Shared with macOS */,
+				E70000000000000000000004 /* Widget */,
+				E70000000000000000000005 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		E70000000000000000000002 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				E20000000000000000000001 /* WeReadShelfApp.swift */,
+				E20000000000000000000002 /* LibraryView.swift */,
+				E2000000000000000000000E /* Assets.xcassets */,
+				E20000000000000000000008 /* Info.plist */,
+				E20000000000000000000009 /* WeReadShelf.entitlements */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		E70000000000000000000003 /* Shared with macOS */ = {
+			isa = PBXGroup;
+			children = (
+				E20000000000000000000003 /* LibraryStore.swift */,
+				E20000000000000000000004 /* WeReadAPI.swift */,
+				E20000000000000000000005 /* ReadingModels.swift */,
+				E20000000000000000000006 /* WidgetSnapshotStore.swift */,
+			);
+			name = "Shared with macOS";
+			sourceTree = "<group>";
+		};
+		E70000000000000000000004 /* Widget */ = {
+			isa = PBXGroup;
+			children = (
+				E20000000000000000000007 /* ReadingWidgets.swift */,
+				E2000000000000000000000A /* Info.plist */,
+				E2000000000000000000000B /* WeReadShelfWidgets.entitlements */,
+			);
+			path = Widget;
+			sourceTree = "<group>";
+		};
+		E70000000000000000000005 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				E2000000000000000000000C /* WeReadShelf.app */,
+				E2000000000000000000000D /* WeReadShelfWidgets.appex */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E50000000000000000000001 /* WeReadShelf */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E80000000000000000000002 /* WeReadShelf configurations */;
+			buildPhases = (
+				E60000000000000000000001 /* Sources */,
+				E60000000000000000000004 /* Frameworks */,
+				E60000000000000000000006 /* Resources */,
+				E60000000000000000000003 /* Embed App Extensions */,
+			);
+			buildRules = ();
+			dependencies = (E30000000000000000000002 /* PBXTargetDependency */, );
+			name = WeReadShelf;
+			productName = WeReadShelf;
+			productReference = E2000000000000000000000C /* WeReadShelf.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E50000000000000000000002 /* WeReadShelfWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E80000000000000000000003 /* WeReadShelfWidgets configurations */;
+			buildPhases = (
+				E60000000000000000000002 /* Sources */,
+				E60000000000000000000005 /* Frameworks */,
+			);
+			buildRules = ();
+			dependencies = ();
+			name = WeReadShelfWidgets;
+			productName = WeReadShelfWidgets;
+			productReference = E2000000000000000000000D /* WeReadShelfWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E40000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+			};
+			buildConfigurationList = E80000000000000000000001 /* Project configurations */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = "zh-Hans";
+			hasScannedForEncodings = 0;
+			knownRegions = ("zh-Hans", Base, );
+			mainGroup = E70000000000000000000001;
+			productRefGroup = E70000000000000000000005 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (E50000000000000000000001 /* WeReadShelf */, E50000000000000000000002 /* WeReadShelfWidgets */, );
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E60000000000000000000006 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (E1000000000000000000000B /* Assets.xcassets in Resources */, );
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		E60000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E10000000000000000000001 /* WeReadShelfApp.swift in Sources */,
+				E10000000000000000000002 /* LibraryView.swift in Sources */,
+				E10000000000000000000003 /* LibraryStore.swift in Sources */,
+				E10000000000000000000004 /* WeReadAPI.swift in Sources */,
+				E10000000000000000000005 /* ReadingModels.swift in Sources */,
+				E10000000000000000000006 /* WidgetSnapshotStore.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E60000000000000000000002 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E10000000000000000000007 /* ReadingModels.swift in Sources */,
+				E10000000000000000000008 /* WidgetSnapshotStore.swift in Sources */,
+				E10000000000000000000009 /* ReadingWidgets.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E30000000000000000000002 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = E50000000000000000000002 /* WeReadShelfWidgets */;
+			targetProxy = E30000000000000000000001 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		E90000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				WEREAD_APP_GROUP_IDENTIFIER = group.com.quanhengzhuang.weread.ios;
+			};
+			name = Debug;
+		};
+		E90000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				WEREAD_APP_GROUP_IDENTIFIER = group.com.quanhengzhuang.weread.ios;
+			};
+			name = Release;
+		};
+		E90000000000000000000003 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/WeReadShelf.entitlements;
+				INFOPLIST_FILE = App/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.quanhengzhuang.WeRead.iOS;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		E90000000000000000000004 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = App/WeReadShelf.entitlements;
+				INFOPLIST_FILE = App/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.quanhengzhuang.WeRead.iOS;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+		E90000000000000000000005 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Widget/WeReadShelfWidgets.entitlements;
+				INFOPLIST_FILE = Widget/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.quanhengzhuang.WeRead.iOS.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Debug;
+		};
+		E90000000000000000000006 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = Widget/WeReadShelfWidgets.entitlements;
+				INFOPLIST_FILE = Widget/Info.plist;
+				PRODUCT_BUNDLE_IDENTIFIER = com.quanhengzhuang.WeRead.iOS.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		E80000000000000000000001 /* Project configurations */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (E90000000000000000000001 /* Debug */, E90000000000000000000002 /* Release */, );
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E80000000000000000000002 /* WeReadShelf configurations */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (E90000000000000000000003 /* Debug */, E90000000000000000000004 /* Release */, );
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		E80000000000000000000003 /* WeReadShelfWidgets configurations */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (E90000000000000000000005 /* Debug */, E90000000000000000000006 /* Release */, );
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E40000000000000000000001 /* Project object */;
+}

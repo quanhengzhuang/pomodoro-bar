@@ -82,6 +82,14 @@ iOS 18 及以上还可以在锁屏底部添加“打开 Pomodoro”快捷控制�
 
 在 Mac 桌面右键选择「编辑小组件」，搜索 `WeReadShelf`，即可同时添加「最近阅读」和「我的书单」。小组件显示最近一次同步或编辑后保存的书单，点击可打开应用中的对应书单。
 
+## WeReadShelf iPhone App
+
+在 Xcode 中打开 [WeReadShelf iOS 工程](iOS/WeReadShelf/WeReadShelf.xcodeproj)，选择 `WeReadShelf` scheme，在支持 iOS 17 或更新版本的 iPhone 或模拟器上运行。真机安装时，给应用和 `WeReadShelfWidgets` 扩展配置同一个支持 App Groups 的 Apple Developer Team，并为两个 target 配置同一个已注册的 App Group。[Apple App Groups 文档](https://developer.apple.com/documentation/xcode/configuring-app-groups)
+
+在设置中输入微信读书 API Key 后，即可查看「最近阅读」和「我的书单」。两份书单各有列表和格子布局，下拉可同步书架，点封面可打开微信读书。API Key 保存在 iOS 钥匙串，「我的书单」保存在手机本机。[获取微信读书 API Key](https://weread.qq.com/r/weread-skills)
+
+打开应用同步后，长按 iPhone 主屏幕的空白处，在小组件库搜索 `WeReadShelf`。两个书单小组件各有小号和中号，可放在同一个主屏幕上。它们显示上次同步或编辑后的内容，点按可打开应用中的对应书单。[Apple 主屏幕小组件指南](https://support.apple.com/zh-cn/118610)
+
 ## 记录格式
 
 ```json
