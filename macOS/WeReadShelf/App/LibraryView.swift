@@ -288,7 +288,7 @@ private struct BookRow<Actions: View>: View {
     var body: some View {
         HStack(spacing: 12) {
             BookCover(book: book)
-                .frame(width: 18)
+                .frame(width: 40)
 
             VStack(alignment: .leading, spacing: 3) {
                 BookHeading(book: book)
