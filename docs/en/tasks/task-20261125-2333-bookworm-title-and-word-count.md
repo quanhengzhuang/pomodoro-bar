@@ -6,7 +6,8 @@ Enlarge the two shelf headings slightly and fill in word counts and reader count
 
 ## Changes
 
-- Enlarge the My List and Recently Read page headings.
+- Enlarge the leading-aligned My List and Recently Read page headings.
+- Slightly increase tracking for list titles, authors, and metadata.
 - Prefer the total from book details. When absent, look up the official chapter list and show a total only when the chapter counts can be combined reliably.
 - Show the reader count next to the recommendation, matching the exact book ID. Put the date, duration, and word count on the next line and simplify the duration label.
 - Open the WeRead reader from covers and book details from list text. Style the extra separator on the date line of shared images.

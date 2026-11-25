@@ -169,6 +169,7 @@ private struct LibraryScreen: View {
                         ToolbarItem(placement: .largeTitle) {
                             Text(list.title)
                                 .font(.system(size: pageTitleSize, weight: .bold))
+                                .frame(maxWidth: .infinity, alignment: .leading)
                                 .accessibilityAddTraits(.isHeader)
                         }
                     }
@@ -601,15 +602,21 @@ private struct BookDetails: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(book.title).font(compact ? .footnote.weight(.semibold) : .headline)
+            Text(book.title)
+                .tracking(compact ? 0.35 : 0)
+                .font(compact ? .footnote.weight(.semibold) : .headline)
                 .lineLimit(compact ? 1 : 2)
             if let author = book.author, !author.isEmpty {
-                Text(author).font(compact ? .caption : .subheadline).foregroundStyle(.secondary)
+                Text(author)
+                    .tracking(compact ? 0.25 : 0)
+                    .font(compact ? .caption : .subheadline)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             ForEach(metadataLines, id: \.self) { line in
                 if dynamicTypeSize.isAccessibilitySize {
                     Text(line.joined(separator: "，"))
+                        .tracking(compact ? 0.15 : 0)
                 } else {
                     HStack(spacing: 7) {
                         ForEach(Array(line.enumerated()), id: \.offset) { index, detail in
@@ -620,6 +627,7 @@ private struct BookDetails: View {
                                     .accessibilityHidden(true)
                             }
                             Text(detail)
+                                .tracking(compact ? 0.15 : 0)
                         }
                     }
                     .lineLimit(1)
