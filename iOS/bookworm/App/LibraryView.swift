@@ -36,7 +36,7 @@ struct LibraryView: View {
             switch destination {
             case .settings: APIKeySettings(store: store)
             case .picker: ShelfPicker(store: store)
-            case .share(let export): BookListShareSheet(files: export.files)
+            case .share(let export): BookListShareSheet(file: export.file)
             }
         }
         .onOpenURL { url in
@@ -315,7 +315,7 @@ private struct LibraryScreen: View {
         let tile = VStack(alignment: .leading, spacing: 5) {
             BookCover(book: book, cornerRadius: 0, opensBook: !isSorting, onHold: list == .custom ? beginEditing : nil)
             Text(book.title)
-                .font(.caption.weight(.medium))
+                .font(.caption2.weight(.medium))
                 .lineLimit(1)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -501,12 +501,14 @@ private struct LibraryScreen: View {
 }
 
 private struct BookListShareSheet: UIViewControllerRepresentable {
-    let files: [URL]
+    let file: URL
 
     func makeUIViewController(context: Context) -> UIActivityViewController {
-        let providers = files.compactMap { NSItemProvider(contentsOf: $0) }
-        let configuration = UIActivityItemsConfiguration(itemProviders: providers)
-        return UIActivityViewController(activityItemsConfiguration: configuration)
+        if let provider = NSItemProvider(contentsOf: file) {
+            let configuration = UIActivityItemsConfiguration(itemProviders: [provider])
+            return UIActivityViewController(activityItemsConfiguration: configuration)
+        }
+        return UIActivityViewController(activityItems: [file], applicationActivities: nil)
     }
 
     func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}

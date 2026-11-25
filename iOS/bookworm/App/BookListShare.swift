@@ -13,7 +13,7 @@ struct BookListShareItem: Sendable {
 
 struct BookListShareExport: Identifiable, Sendable {
     let directory: URL
-    let files: [URL]
+    let file: URL
 
     var id: URL { directory }
 }
@@ -24,16 +24,16 @@ enum BookListShareRenderer {
         case encodingFailed
     }
 
-    private struct Page {
+    private struct ImageStrip {
         var rows: [Range<Int>] = []
-        var height = headerHeight + bottomMargin
+        var height: CGFloat = 0
     }
 
     private static let width: CGFloat = 960
     private static let sideMargin: CGFloat = 44
     private static let headerHeight: CGFloat = 163
     private static let bottomMargin: CGFloat = 30
-    private static let maximumPageHeight: CGFloat = 4_096
+    private static let maximumStripHeight: CGFloat = 4_096
     private static let columnGap: CGFloat = 20
     private static let gridCoverWidth = (width - sideMargin * 2 - columnGap * 3) / 4
     private static let gridCoverHeight = (gridCoverWidth / 0.7).rounded()
@@ -49,7 +49,7 @@ enum BookListShareRenderer {
     static func render(items: [BookListShareItem], layout: BookListShareLayout) async throws -> BookListShareExport {
         guard !items.isEmpty else { throw ExportError.emptyList }
         try Task.checkCancellation()
-        let pages = makePages(for: items, layout: layout)
+        let strips = makeStrips(for: items, layout: layout)
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent("bookworm-share-\(UUID().uuidString)", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -60,41 +60,42 @@ enum BookListShareRenderer {
         let coverCutoff = ContinuousClock.now.advanced(by: .seconds(6))
         defer { session?.invalidateAndCancel() }
 
-        var files: [URL] = []
-        for (index, page) in pages.enumerated() {
+        let destination = directory.appendingPathComponent("我的书单.png")
+        let height = strips.reduce(0) { $0 + Int($1.height) }
+        let writer = try BookListPNGWriter(to: destination, width: Int(width), height: height)
+        for (index, strip) in strips.enumerated() {
             try Task.checkCancellation()
-            let urls = Set(page.rows.flatMap { row in items[row].compactMap { $0.book.coverURL } })
+            let urls = Set(strip.rows.flatMap { row in items[row].compactMap { $0.book.coverURL } })
             let covers = await loadCovers(from: urls, session: session, cutoff: coverCutoff)
             try Task.checkCancellation()
-            let name = pages.count == 1 ? "我的书单.png" : "我的书单-\(String(format: "%02d", index + 1)).png"
-            let destination = directory.appendingPathComponent(name)
-            try drawPage(
-                page, index: index + 1, pageCount: pages.count, items: items,
-                layout: layout, covers: covers, to: destination
+            try appendStrip(
+                strip, includesHeader: index == 0, items: items,
+                layout: layout, covers: covers, to: writer
             )
-            files.append(destination)
         }
         try Task.checkCancellation()
+        try writer.finish()
         complete = true
-        return BookListShareExport(directory: directory, files: files)
+        return BookListShareExport(directory: directory, file: destination)
     }
 
-    private static func makePages(for items: [BookListShareItem], layout: BookListShareLayout) -> [Page] {
-        var pages: [Page] = []
-        var page = Page()
+    private static func makeStrips(for items: [BookListShareItem], layout: BookListShareLayout) -> [ImageStrip] {
+        var strips: [ImageStrip] = []
+        var strip = ImageStrip(height: headerHeight)
         let columns = layout == .grid ? 4 : 1
         for start in stride(from: 0, to: items.count, by: columns) {
             let row = start..<min(start + columns, items.count)
             let height = rowHeight(items[start], layout: layout)
-            if !page.rows.isEmpty, page.height + height > maximumPageHeight {
-                pages.append(page)
-                page = Page()
+            if !strip.rows.isEmpty, strip.height + height + bottomMargin > maximumStripHeight {
+                strips.append(strip)
+                strip = ImageStrip()
             }
-            page.rows.append(row)
-            page.height += height
+            strip.rows.append(row)
+            strip.height += height
         }
-        pages.append(page)
-        return pages
+        strip.height += bottomMargin
+        strips.append(strip)
+        return strips
     }
 
     private static func rowHeight(_ item: BookListShareItem, layout: BookListShareLayout) -> CGFloat {
@@ -104,33 +105,30 @@ enum BookListShareRenderer {
         }
     }
 
-    private static func drawPage(
-        _ page: Page, index: Int, pageCount: Int, items: [BookListShareItem],
-        layout: BookListShareLayout, covers: [URL: UIImage], to destination: URL
+    private static func appendStrip(
+        _ strip: ImageStrip, includesHeader: Bool, items: [BookListShareItem],
+        layout: BookListShareLayout, covers: [URL: UIImage], to writer: BookListPNGWriter
     ) throws {
         try autoreleasepool {
             let format = UIGraphicsImageRendererFormat()
             format.scale = 1
             format.opaque = true
             format.preferredRange = .standard
-            let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: page.height), format: format)
-            let image = renderer.pngData { context in
+            let renderer = UIGraphicsImageRenderer(size: CGSize(width: width, height: strip.height), format: format)
+            let image = renderer.image { context in
                 UIColor.white.setFill()
-                context.fill(CGRect(x: 0, y: 0, width: width, height: page.height))
-                drawText("我的书单", in: CGRect(x: sideMargin, y: 32, width: 600, height: 66),
-                         size: 53, weight: .bold, color: ink)
-                drawText("共 \(items.count) 本", in: CGRect(x: sideMargin, y: 102, width: 500, height: 36),
-                         size: 27, color: secondary)
-                if pageCount > 1 {
-                    drawText("\(index) / \(pageCount) 张",
-                             in: CGRect(x: width - sideMargin - 180, y: 102, width: 180, height: 36),
-                             size: 27, color: secondary, alignment: .right)
+                context.fill(CGRect(x: 0, y: 0, width: width, height: strip.height))
+                if includesHeader {
+                    drawText("我的书单", in: CGRect(x: sideMargin, y: 32, width: 600, height: 66),
+                             size: 53, weight: .bold, color: ink)
+                    drawText("共 \(items.count) 本", in: CGRect(x: sideMargin, y: 102, width: 500, height: 36),
+                             size: 27, color: secondary)
+                    border.setFill()
+                    context.fill(CGRect(x: sideMargin, y: 145, width: width - sideMargin * 2, height: 2))
                 }
-                border.setFill()
-                context.fill(CGRect(x: sideMargin, y: 145, width: width - sideMargin * 2, height: 2))
 
-                var y = headerHeight
-                for row in page.rows {
+                var y = includesHeader ? headerHeight : 0
+                for row in strip.rows {
                     let rowHeight = rowHeight(items[row.lowerBound], layout: layout)
                     switch layout {
                     case .grid:
@@ -163,18 +161,18 @@ enum BookListShareRenderer {
                     y += rowHeight
                 }
             }
-            guard !image.isEmpty else { throw ExportError.encodingFailed }
-            try image.write(to: destination, options: .atomic)
+            guard let image = image.cgImage else { throw ExportError.encodingFailed }
+            try writer.append(image)
         }
     }
 
     private static func drawText(
         _ text: String, in rect: CGRect, size: CGFloat, weight: UIFont.Weight = .regular,
-        color: UIColor, alignment: NSTextAlignment = .left, stylesMetadataDivider: Bool = false
+        color: UIColor, stylesMetadataDivider: Bool = false
     ) {
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byTruncatingTail
-        style.alignment = alignment
+        style.alignment = .left
         let font = UIFont.systemFont(ofSize: size, weight: weight)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,

@@ -9,6 +9,7 @@
 		E10000000000000000000001 /* WeReadShelfApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000001 /* WeReadShelfApp.swift */; };
 		E10000000000000000000002 /* LibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000002 /* LibraryView.swift */; };
 		E1000000000000000000000E /* BookListShare.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000013 /* BookListShare.swift */; };
+		E1000000000000000000000F /* BookListPNGWriter.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000014 /* BookListPNGWriter.swift */; };
 		E10000000000000000000003 /* LibraryStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000003 /* LibraryStore.swift */; };
 		E10000000000000000000004 /* WeReadAPI.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000004 /* WeReadAPI.swift */; };
 		E10000000000000000000005 /* ReadingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000005 /* ReadingModels.swift */; };
@@ -48,6 +49,7 @@
 		E20000000000000000000001 /* WeReadShelfApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WeReadShelfApp.swift; sourceTree = "<group>"; };
 		E20000000000000000000002 /* LibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryView.swift; sourceTree = "<group>"; };
 		E20000000000000000000013 /* BookListShare.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookListShare.swift; sourceTree = "<group>"; };
+		E20000000000000000000014 /* BookListPNGWriter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BookListPNGWriter.swift; sourceTree = "<group>"; };
 		E20000000000000000000003 /* LibraryStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../macOS/WeReadShelf/App/LibraryStore.swift; sourceTree = SOURCE_ROOT; };
 		E20000000000000000000004 /* WeReadAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../macOS/WeReadShelf/App/WeReadAPI.swift; sourceTree = SOURCE_ROOT; };
 		E20000000000000000000005 /* ReadingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ../../macOS/WeReadShelf/Shared/ReadingModels.swift; sourceTree = SOURCE_ROOT; };
@@ -99,6 +101,7 @@
 				E20000000000000000000001 /* WeReadShelfApp.swift */,
 				E20000000000000000000002 /* LibraryView.swift */,
 				E20000000000000000000013 /* BookListShare.swift */,
+				E20000000000000000000014 /* BookListPNGWriter.swift */,
 				E2000000000000000000000E /* Assets.xcassets */,
 				E20000000000000000000008 /* Info.plist */,
 				E20000000000000000000009 /* WeReadShelf.entitlements */,
@@ -217,6 +220,7 @@
 				E10000000000000000000001 /* WeReadShelfApp.swift in Sources */,
 				E10000000000000000000002 /* LibraryView.swift in Sources */,
 				E1000000000000000000000E /* BookListShare.swift in Sources */,
+				E1000000000000000000000F /* BookListPNGWriter.swift in Sources */,
 				E10000000000000000000003 /* LibraryStore.swift in Sources */,
 				E10000000000000000000004 /* WeReadAPI.swift in Sources */,
 				E10000000000000000000005 /* ReadingModels.swift in Sources */,
