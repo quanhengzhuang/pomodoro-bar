@@ -82,13 +82,13 @@ Recent Reading is sorted by the last reading date. In My Book List, you can add 
 
 Right-click your Mac desktop, choose **Edit Widgets**, and search for `WeReadShelf`. You can add both Recent Reading and My Book List at the same time. Each widget displays the last synced or saved list and opens it in the app when clicked.
 
-## WeReadShelf for iPhone
+## bookworm for iPhone
 
-Open the [WeReadShelf iOS project](../../iOS/WeReadShelf/WeReadShelf.xcodeproj) in Xcode and run the `WeReadShelf` scheme on an iPhone or simulator with iOS 17 or later. For device installation, configure the app and `WeReadShelfWidgets` with the same Apple Developer Team and registered App Group. [Apple App Groups documentation](https://developer.apple.com/documentation/xcode/configuring-app-groups)
+Open the [bookworm iOS project](../../iOS/bookworm/bookworm.xcodeproj) in Xcode and run the `bookworm` scheme on an iPhone or simulator with iOS 17 or later. For device installation, configure the app and `bookwormWidgets` with the same Apple Developer Team and registered App Group. [Apple App Groups documentation](https://developer.apple.com/documentation/xcode/configuring-app-groups)
 
 Enter your WeRead API key in Settings to use Recent Reading and My Book List. Each list offers list and grid layouts. Pull down to sync the shelf or tap a book cover to open WeRead. The app saves the API key in the iOS Keychain and keeps My Book List on the iPhone. [Get a WeRead API key](https://weread.qq.com/r/weread-skills)
 
-After syncing in the app, touch and hold an empty area on the iPhone Home Screen and search for `WeReadShelf` in the widget gallery. Both lists come in small and medium sizes and can appear together. Each widget shows the latest synced or edited list and opens it in the app when tapped. [Apple's Home Screen widget guide](https://support.apple.com/en-us/118610)
+After syncing in the app, touch and hold an empty area on the iPhone Home Screen and search for `bookworm` in the widget gallery (`书虫` in Simplified Chinese). Both lists come in small and medium sizes and can appear together. Each widget shows the latest synced or edited list and opens it in the app when tapped. [Apple's Home Screen widget guide](https://support.apple.com/en-us/118610)
 
 ## Record Format
 

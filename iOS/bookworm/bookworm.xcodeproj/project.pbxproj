@@ -15,8 +15,10 @@
 		E10000000000000000000007 /* ReadingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000005 /* ReadingModels.swift */; };
 		E10000000000000000000008 /* WidgetSnapshotStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000006 /* WidgetSnapshotStore.swift */; };
 		E10000000000000000000009 /* ReadingWidgets.swift in Sources */ = {isa = PBXBuildFile; fileRef = E20000000000000000000007 /* ReadingWidgets.swift */; };
-		E1000000000000000000000A /* WeReadShelfWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = E2000000000000000000000D /* WeReadShelfWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		E1000000000000000000000A /* bookwormWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = E2000000000000000000000D /* bookwormWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		E1000000000000000000000B /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E2000000000000000000000E /* Assets.xcassets */; };
+		E1000000000000000000000C /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = E70000000000000000000006 /* InfoPlist.strings */; };
+		E1000000000000000000000D /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = E70000000000000000000007 /* InfoPlist.strings */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -25,7 +27,7 @@
 			containerPortal = E40000000000000000000001 /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = E50000000000000000000002;
-			remoteInfo = WeReadShelfWidgets;
+			remoteInfo = bookwormWidgets;
 		};
 /* End PBXContainerItemProxy section */
 
@@ -35,7 +37,7 @@
 			buildActionMask = 2147483647;
 			dstPath = "";
 			dstSubfolderSpec = 13;
-			files = (E1000000000000000000000A /* WeReadShelfWidgets.appex in Embed App Extensions */, );
+			files = (E1000000000000000000000A /* bookwormWidgets.appex in Embed App Extensions */, );
 			name = "Embed App Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -53,9 +55,13 @@
 		E20000000000000000000009 /* WeReadShelf.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WeReadShelf.entitlements; sourceTree = "<group>"; };
 		E2000000000000000000000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		E2000000000000000000000B /* WeReadShelfWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = WeReadShelfWidgets.entitlements; sourceTree = "<group>"; };
-		E2000000000000000000000C /* WeReadShelf.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = WeReadShelf.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		E2000000000000000000000D /* WeReadShelfWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WeReadShelfWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		E2000000000000000000000C /* bookworm.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = bookworm.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		E2000000000000000000000D /* bookwormWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = bookwormWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		E2000000000000000000000E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		E2000000000000000000000F /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "en"; path = "en.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		E20000000000000000000010 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		E20000000000000000000011 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "en"; path = "en.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		E20000000000000000000012 /* zh-Hans */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-Hans"; path = "zh-Hans.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -87,6 +93,7 @@
 		E70000000000000000000002 /* App */ = {
 			isa = PBXGroup;
 			children = (
+				E70000000000000000000006 /* InfoPlist.strings */,
 				E20000000000000000000001 /* WeReadShelfApp.swift */,
 				E20000000000000000000002 /* LibraryView.swift */,
 				E2000000000000000000000E /* Assets.xcassets */,
@@ -110,6 +117,7 @@
 		E70000000000000000000004 /* Widget */ = {
 			isa = PBXGroup;
 			children = (
+				E70000000000000000000007 /* InfoPlist.strings */,
 				E20000000000000000000007 /* ReadingWidgets.swift */,
 				E2000000000000000000000A /* Info.plist */,
 				E2000000000000000000000B /* WeReadShelfWidgets.entitlements */,
@@ -120,8 +128,8 @@
 		E70000000000000000000005 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				E2000000000000000000000C /* WeReadShelf.app */,
-				E2000000000000000000000D /* WeReadShelfWidgets.appex */,
+				E2000000000000000000000C /* bookworm.app */,
+				E2000000000000000000000D /* bookwormWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -129,9 +137,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		E50000000000000000000001 /* WeReadShelf */ = {
+		E50000000000000000000001 /* bookworm */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = E80000000000000000000002 /* WeReadShelf configurations */;
+			buildConfigurationList = E80000000000000000000002 /* bookworm configurations */;
 			buildPhases = (
 				E60000000000000000000001 /* Sources */,
 				E60000000000000000000004 /* Frameworks */,
@@ -140,23 +148,24 @@
 			);
 			buildRules = ();
 			dependencies = (E30000000000000000000002 /* PBXTargetDependency */, );
-			name = WeReadShelf;
-			productName = WeReadShelf;
-			productReference = E2000000000000000000000C /* WeReadShelf.app */;
+			name = bookworm;
+			productName = bookworm;
+			productReference = E2000000000000000000000C /* bookworm.app */;
 			productType = "com.apple.product-type.application";
 		};
-		E50000000000000000000002 /* WeReadShelfWidgets */ = {
+		E50000000000000000000002 /* bookwormWidgets */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = E80000000000000000000003 /* WeReadShelfWidgets configurations */;
+			buildConfigurationList = E80000000000000000000003 /* bookwormWidgets configurations */;
 			buildPhases = (
 				E60000000000000000000002 /* Sources */,
 				E60000000000000000000005 /* Frameworks */,
+				E60000000000000000000007 /* Resources */,
 			);
 			buildRules = ();
 			dependencies = ();
-			name = WeReadShelfWidgets;
-			productName = WeReadShelfWidgets;
-			productReference = E2000000000000000000000D /* WeReadShelfWidgets.appex */;
+			name = bookwormWidgets;
+			productName = bookwormWidgets;
+			productReference = E2000000000000000000000D /* bookwormWidgets.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
@@ -173,12 +182,12 @@
 			compatibilityVersion = "Xcode 14.0";
 			developmentRegion = "zh-Hans";
 			hasScannedForEncodings = 0;
-			knownRegions = ("zh-Hans", Base, );
+			knownRegions = ("zh-Hans", en, Base, );
 			mainGroup = E70000000000000000000001;
 			productRefGroup = E70000000000000000000005 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (E50000000000000000000001 /* WeReadShelf */, E50000000000000000000002 /* WeReadShelfWidgets */, );
+			targets = (E50000000000000000000001 /* bookworm */, E50000000000000000000002 /* bookwormWidgets */, );
 		};
 /* End PBXProject section */
 
@@ -186,7 +195,13 @@
 		E60000000000000000000006 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (E1000000000000000000000B /* Assets.xcassets in Resources */, );
+			files = (E1000000000000000000000B /* Assets.xcassets in Resources */, E1000000000000000000000C /* InfoPlist.strings in Resources */, );
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		E60000000000000000000007 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (E1000000000000000000000D /* InfoPlist.strings in Resources */, );
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
@@ -220,10 +235,31 @@
 /* Begin PBXTargetDependency section */
 		E30000000000000000000002 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			target = E50000000000000000000002 /* WeReadShelfWidgets */;
+			target = E50000000000000000000002 /* bookwormWidgets */;
 			targetProxy = E30000000000000000000001 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		E70000000000000000000006 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E2000000000000000000000F /* en */,
+				E20000000000000000000010 /* zh-Hans */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+		E70000000000000000000007 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				E20000000000000000000011 /* en */,
+				E20000000000000000000012 /* zh-Hans */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
 		E90000000000000000000001 /* Debug */ = {
@@ -332,13 +368,13 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		E80000000000000000000002 /* WeReadShelf configurations */ = {
+		E80000000000000000000002 /* bookworm configurations */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (E90000000000000000000003 /* Debug */, E90000000000000000000004 /* Release */, );
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		E80000000000000000000003 /* WeReadShelfWidgets configurations */ = {
+		E80000000000000000000003 /* bookwormWidgets configurations */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (E90000000000000000000005 /* Debug */, E90000000000000000000006 /* Release */, );
 			defaultConfigurationIsVisible = 0;
