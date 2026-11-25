@@ -112,7 +112,6 @@ private struct ReadingTimelineProvider: TimelineProvider {
 #if os(iOS)
 private struct CoverReadingWidgetView: View {
     @Environment(\.widgetFamily) private var family
-    @ScaledMetric(relativeTo: .caption2) private var mediumCaptionHeight = 14.0
 
     let list: ReadingList
     let entry: ReadingEntry
@@ -130,32 +129,32 @@ private struct CoverReadingWidgetView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: spacing) {
-            Label {
-                Text(list.title)
-            } icon: {
-                Image(systemName: list.iconName)
-                    .foregroundStyle(accent)
-                    .widgetAccentable()
-            }
-            .font(.system(.caption, weight: .semibold))
-            .accessibilityAddTraits(.isHeader)
+            Text(list.title)
+                .font(.system(.subheadline, design: .serif, weight: .semibold))
+                .accessibilityAddTraits(.isHeader)
 
             if entry.books.isEmpty {
                 Text(entry.emptyMessage(for: list))
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            } else if family == .systemSmall, let book = entry.books.first {
-                smallTile(book)
             } else {
                 GeometryReader { geometry in
-                    let width = max(0, (geometry.size.width - spacing * 3) / 4)
-                    let height = min(width / coverAspect, max(0, geometry.size.height - mediumCaptionHeight - 4))
-                    HStack(alignment: .top, spacing: spacing) {
-                        ForEach(entry.books.prefix(4)) { book in
-                            mediumTile(book, width: width, coverHeight: height)
+                    if family == .systemSmall, let book = entry.books.first {
+                        let height = min(geometry.size.width / coverAspect, geometry.size.height)
+                        sizedCover(book, height: height)
+                            .privacySensitive(book.isPrivate)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        let width = max(0, (geometry.size.width - spacing * 3) / 4)
+                        let height = min(width / coverAspect, geometry.size.height)
+                        HStack(spacing: spacing) {
+                            ForEach(entry.books.prefix(4)) { book in
+                                mediumTile(book, coverHeight: height)
+                                    .frame(width: width)
+                            }
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 }
             }
         }
@@ -163,37 +162,16 @@ private struct CoverReadingWidgetView: View {
         .widgetURL(widgetDestination)
     }
 
-    private func smallTile(_ book: ReadingBook) -> some View {
-        VStack(spacing: 4) {
-            GeometryReader { geometry in
-                let height = min(geometry.size.width / coverAspect, geometry.size.height)
-                sizedCover(book, height: height)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-            Text(book.title)
-                .font(.system(.caption, weight: .medium))
-                .multilineTextAlignment(.center)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .privacySensitive(book.isPrivate)
-    }
-
-    private func mediumTile(_ book: ReadingBook, width: CGFloat, coverHeight: CGFloat) -> some View {
-        let tile = VStack(spacing: 4) {
-            sizedCover(book, height: coverHeight)
-            Text(book.title)
-                .font(.system(.caption2, weight: .medium))
-                .lineLimit(1)
-        }
-        .frame(width: width)
-
-        return Group {
+    private func mediumTile(_ book: ReadingBook, coverHeight: CGFloat) -> some View {
+        Group {
             if book.destinationURL != nil {
-                Link(destination: list.widgetBookURL(for: book.id)) { tile }
-                    .buttonStyle(.plain)
+                Link(destination: list.widgetBookURL(for: book.id)) {
+                    sizedCover(book, height: coverHeight)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(book.title)
             } else {
-                tile
+                sizedCover(book, height: coverHeight)
             }
         }
         .privacySensitive(book.isPrivate)
@@ -203,7 +181,8 @@ private struct CoverReadingWidgetView: View {
         cover(for: book)
             .frame(width: height * coverAspect, height: height)
             .clipped()
-            .accessibilityHidden(true)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(book.title)
     }
 
     @ViewBuilder
@@ -219,12 +198,9 @@ private struct CoverReadingWidgetView: View {
             ZStack(alignment: .leading) {
                 Rectangle().fill(accent.opacity(0.14))
                 Rectangle().fill(accent.opacity(0.48)).frame(width: 2)
-                Text(book.title)
-                    .font(.system(.caption2, design: .serif, weight: .semibold))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(3)
-                    .foregroundStyle(.primary)
-                    .padding(6)
+                Image(systemName: "book.closed.fill")
+                    .font(.title3)
+                    .foregroundStyle(accent)
                     .frame(maxWidth: .infinity)
             }
         }

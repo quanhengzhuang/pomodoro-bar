@@ -6,7 +6,7 @@ Make book covers the focus of the Recent Reading and My Book List Home Screen wi
 
 ## Changes
 
-- Show up to four square-cornered covers with single-line titles in a medium widget. Focus the small widget on the first book. Use bookworm's header icons and colors, with a titled placeholder when artwork is unavailable.
+- Show up to four covers in a medium widget and focus the small widget on the first book. Show only the list name in the header, with a plain text title for My Book List. Remove captions and metadata beneath covers. Use bookworm's square corners and a graphical placeholder for missing artwork. Provide book titles to VoiceOver.
 - Cache thumbnails in the iOS App Group. Fetch the current covers after a list update and reload the widgets when the thumbnails are ready. Reuse cached artwork offline.
 - iOS delivers the cover tap to bookworm, which immediately tries to open WeRead. Prefer the supplied reader link and use the supplied detail link or website when appropriate. Empty areas and books without links can open their list in bookworm.
 
