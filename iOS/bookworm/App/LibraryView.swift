@@ -10,6 +10,7 @@ struct LibraryView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var selection: ReadingList = .custom
     @State private var sheet: LibrarySheet?
+    @State private var shareDirectory: URL?
     @State private var pendingWidgetBook: ReadingWidgetBookLink?
     @State private var couldNotOpenWidgetBook = false
 
@@ -21,16 +22,21 @@ struct LibraryView: View {
                     list: list,
                     layout: list == .recent ? $recentLayout : $customLayout,
                     openSettings: { sheet = .settings },
-                    openPicker: { sheet = .picker }
+                    openPicker: { sheet = .picker },
+                    presentShare: { export in
+                        shareDirectory = export.directory
+                        sheet = .share(export)
+                    }
                 )
                 .tabItem { Label(list.title, systemImage: list.iconName) }
                 .tag(list)
             }
         }
-        .sheet(item: $sheet) { destination in
+        .sheet(item: $sheet, onDismiss: removeSharedImages) { destination in
             switch destination {
             case .settings: APIKeySettings(store: store)
             case .picker: ShelfPicker(store: store)
+            case .share(let export): BookListShareSheet(files: export.files)
             }
         }
         .onOpenURL { url in
@@ -47,6 +53,11 @@ struct LibraryView: View {
         } message: {
             Text("请确认已安装微信读书。")
         }
+    }
+
+    private func removeSharedImages() {
+        if let shareDirectory { try? FileManager.default.removeItem(at: shareDirectory) }
+        shareDirectory = nil
     }
 
     private func openPendingWidgetBook() {
@@ -82,10 +93,17 @@ struct LibraryView: View {
     }
 }
 
-private enum LibrarySheet: String, Identifiable {
+private enum LibrarySheet: Identifiable {
     case settings, picker
+    case share(BookListShareExport)
 
-    var id: Self { self }
+    var id: String {
+        switch self {
+        case .settings: "settings"
+        case .picker: "picker"
+        case .share(let export): export.id.absoluteString
+        }
+    }
 }
 
 private enum LibraryLayout: String {
@@ -116,6 +134,7 @@ private struct LibraryScreen: View {
     @Binding var layout: LibraryLayout
     let openSettings: () -> Void
     let openPicker: () -> Void
+    let presentShare: (BookListShareExport) -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.layoutDirection) private var layoutDirection
     @ScaledMetric(relativeTo: .caption) private var coverColumnWidth = 60.0
@@ -123,6 +142,8 @@ private struct LibraryScreen: View {
     @State private var dragSession = UUID()
     @State private var insertionTarget: GridInsertionTarget?
     @State private var bookToRemove: ReadingBook?
+    @State private var shareTask: Task<Void, Never>?
+    @State private var shareFailed = false
 
     private let gridSpacing: CGFloat = 14
     private let gridRowSpacing: CGFloat = 16
@@ -143,15 +164,21 @@ private struct LibraryScreen: View {
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("设置", systemImage: "gearshape", action: openSettings)
-                            .disabled(isSorting)
+                            .disabled(isSorting || shareTask != nil)
                     }
                     ToolbarItemGroup(placement: .topBarTrailing) {
                         if isSorting {
                             Button("完成", action: finishEditing)
                         } else {
                             if list == .custom {
+                                if shareTask != nil {
+                                    ProgressView().accessibilityLabel("正在生成书单图片")
+                                } else {
+                                    Button("分享书单", systemImage: "square.and.arrow.up", action: generateShare)
+                                        .disabled(books.isEmpty)
+                                }
                                 Button("添加书籍", systemImage: "plus", action: openPicker)
-                                    .disabled(store.shelfBooks.isEmpty)
+                                    .disabled(store.shelfBooks.isEmpty || shareTask != nil)
                             }
                             Button(
                                 layout == .list ? "切换为格子" : "切换为列表",
@@ -159,6 +186,7 @@ private struct LibraryScreen: View {
                             ) {
                                 layout = layout == .list ? .grid : .list
                             }
+                            .disabled(shareTask != nil)
                         }
                     }
                 }
@@ -176,7 +204,38 @@ private struct LibraryScreen: View {
                     Text("《\(book.title)》")
                 }
         }
-        .onDisappear(perform: finishEditing)
+        .alert("无法生成书单图片", isPresented: $shareFailed) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("请稍后重试。")
+        }
+        .onDisappear {
+            finishEditing()
+            shareTask?.cancel()
+        }
+    }
+
+    private func generateShare() {
+        guard shareTask == nil, !books.isEmpty else { return }
+        let exportLayout: BookListShareLayout = layout == .list ? .list : .grid
+        let items = books.map { book in
+            BookListShareItem(book: book, details: BookDetails.shareDetails(
+                for: book, progress: store.progress(for: book.id)
+            ))
+        }
+        shareTask = Task {
+            defer { shareTask = nil }
+            do {
+                let export = try await BookListShareRenderer.render(items: items, layout: exportLayout)
+                guard !Task.isCancelled else {
+                    try? FileManager.default.removeItem(at: export.directory)
+                    return
+                }
+                presentShare(export)
+            } catch {
+                if !Task.isCancelled { shareFailed = true }
+            }
+        }
     }
 
     @ViewBuilder
@@ -331,7 +390,7 @@ private struct LibraryScreen: View {
     }
 
     private func beginEditing() {
-        guard !isSorting else { return }
+        guard !isSorting, shareTask == nil else { return }
         dragSession = UUID()
         editMode = .active
     }
@@ -433,6 +492,18 @@ private struct LibraryScreen: View {
     }
 }
 
+private struct BookListShareSheet: UIViewControllerRepresentable {
+    let files: [URL]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let providers = files.compactMap { NSItemProvider(contentsOf: $0) }
+        let configuration = UIActivityItemsConfiguration(itemProviders: providers)
+        return UIActivityViewController(activityItemsConfiguration: configuration)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
+}
+
 private struct BookCover: View {
     @Environment(\.openURL) private var openURL
     let book: ReadingBook
@@ -497,19 +568,34 @@ private struct BookDetails: View {
                 Text(author).font(compact ? .caption : .subheadline).foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            if let seconds = progress?.totalReadingSeconds, seconds > 0 {
-                Text("累计 \(duration(seconds))").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            if let time = Self.readingTimeText(progress) {
+                Text(time).font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     .lineLimit(compact ? 1 : nil)
             }
-            if let date = [progress?.lastReadAt, book.lastReadAt].compactMap({ $0 }).max() {
-                Text("最近阅读 \(date.formatted(Self.dateFormat))")
+            if let lastRead = Self.lastReadText(book, progress) {
+                Text(lastRead)
                     .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     .lineLimit(compact ? 1 : nil)
             }
         }
     }
 
-    private func duration(_ seconds: Int) -> String {
+    static func shareDetails(for book: ReadingBook, progress: ReadingProgress?) -> [String] {
+        [book.author, readingTimeText(progress), lastReadText(book, progress)]
+            .compactMap { $0 }.filter { !$0.isEmpty }
+    }
+
+    private static func lastReadText(_ book: ReadingBook, _ progress: ReadingProgress?) -> String? {
+        guard let date = [progress?.lastReadAt, book.lastReadAt].compactMap({ $0 }).max() else { return nil }
+        return "最近阅读 \(date.formatted(dateFormat))"
+    }
+
+    private static func readingTimeText(_ progress: ReadingProgress?) -> String? {
+        guard let seconds = progress?.totalReadingSeconds, seconds > 0 else { return nil }
+        return "累计 \(duration(seconds))"
+    }
+
+    private static func duration(_ seconds: Int) -> String {
         let minutes = seconds / 60
         if minutes == 0 { return "\(seconds) 秒" }
         if minutes < 60 { return "\(minutes) 分钟" }

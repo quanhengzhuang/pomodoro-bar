@@ -112,6 +112,7 @@ private struct ReadingTimelineProvider: TimelineProvider {
 #if os(iOS)
 private struct CoverReadingWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.displayScale) private var displayScale
 
     let list: ReadingList
     let entry: ReadingEntry
@@ -119,6 +120,12 @@ private struct CoverReadingWidgetView: View {
     private let coverSpacing: CGFloat = 10
     private let coverAspect: CGFloat = 0.7
     private var accent: Color { list == .recent ? .indigo : .teal }
+
+    private var titleFont: Font {
+        let name = "PingFangSC-Semibold"
+        guard UIFont(name: name, size: 15) != nil else { return .system(.subheadline, weight: .bold) }
+        return .custom(name, size: 15, relativeTo: .subheadline)
+    }
 
     private var widgetDestination: URL {
         guard family == .systemSmall, let book = entry.books.first, book.destinationURL != nil else {
@@ -130,7 +137,7 @@ private struct CoverReadingWidgetView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(list.title)
-                .font(.system(.subheadline, design: .serif, weight: .bold))
+                .font(titleFont)
                 .accessibilityAddTraits(.isHeader)
 
             if entry.books.isEmpty {
@@ -182,6 +189,20 @@ private struct CoverReadingWidgetView: View {
         return cover(for: book)
             .frame(width: height * coverAspect, height: height)
             .clipShape(shape)
+            .overlay {
+                shape.fill(
+                    LinearGradient(
+                        colors: [.white.opacity(0.07), .clear, .black.opacity(0.10)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                )
+                .overlay {
+                    shape.strokeBorder(.primary.opacity(0.24), lineWidth: 1 / displayScale)
+                }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(book.title)
     }
