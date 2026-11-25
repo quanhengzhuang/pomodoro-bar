@@ -20,6 +20,7 @@ final class LibraryStore {
     private var progressRequests: [String: Task<Void, Never>] = [:]
     private var progressErrors: [String: String] = [:]
     @ObservationIgnored private var automaticProgressTask: Task<Void, Never>?
+    @ObservationIgnored private var automaticProgressQueue: [String] = []
 #if os(iOS)
     @ObservationIgnored private var widgetCoverTask: Task<Void, Never>?
 #endif
@@ -145,6 +146,9 @@ final class LibraryStore {
         guard let book = shelfBooks.first(where: { $0.id == id }),
               !customBooks.contains(where: { $0.id == id }) else { return }
         saveCustomBooks(customBooks + [book])
+#if os(iOS)
+        enqueueAutomaticProgress(refreshCached: false)
+#endif
     }
 
     func removeFromCustomList(_ id: String) {
@@ -164,9 +168,11 @@ final class LibraryStore {
     }
 
     private func apply(_ shelf: WeReadAPI.Shelf, credential: APIKeyRecord) {
-        automaticProgressTask?.cancel()
         var updated = library
         if updated.credentialID != credential.id {
+            automaticProgressTask?.cancel()
+            automaticProgressTask = nil
+            automaticProgressQueue.removeAll()
             for request in progressRequests.values { request.cancel() }
             progressRequests.removeAll()
             progressErrors.removeAll()
@@ -182,13 +188,34 @@ final class LibraryStore {
         library = updated
         upgradeMessage = shelf.hasSkillUpgrade ? "微信读书 Skill 有新版本。" : nil
         publishWidgets()
-        let recentIDs = recentBooks.prefix(5).map(\.id)
+        enqueueAutomaticProgress(refreshCached: true)
+    }
+
+    private func enqueueAutomaticProgress(refreshCached: Bool) {
+        guard let credential, credential.id == library.credentialID else { return }
+#if os(iOS)
+        let books = customBooks + recentBooks
+#else
+        let books = Array(recentBooks.prefix(5))
+#endif
+        var seen = Set<String>()
+        let pending = Set(automaticProgressQueue)
+        let bookIDs = books.map(\.id).filter { bookID in
+            seen.insert(bookID).inserted && progressRequests[bookID] == nil &&
+                (refreshCached || pending.contains(bookID) || library.readingProgress?[bookID] == nil)
+        }
+        automaticProgressQueue = Array(bookIDs.reversed())
+        guard automaticProgressTask == nil, !automaticProgressQueue.isEmpty else { return }
         let credentialID = credential.id
         automaticProgressTask = Task { [weak self] in
-            for bookID in recentIDs {
-                guard !Task.isCancelled, let self, self.credential?.id == credentialID else { return }
+            while !Task.isCancelled, let self, self.credential?.id == credentialID,
+                  let bookID = self.automaticProgressQueue.popLast() {
                 await self.loadProgress(for: bookID)
+#if os(iOS)
+                try? await Task.sleep(for: .milliseconds(250))
+#endif
             }
+            if !Task.isCancelled { self?.automaticProgressTask = nil }
         }
     }
 

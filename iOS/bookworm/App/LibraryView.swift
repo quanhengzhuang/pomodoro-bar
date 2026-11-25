@@ -137,7 +137,7 @@ private struct LibraryScreen: View {
     let presentShare: (BookListShareExport) -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.layoutDirection) private var layoutDirection
-    @ScaledMetric(relativeTo: .caption) private var coverColumnWidth = 60.0
+    @ScaledMetric(relativeTo: .caption) private var listCoverHeight: CGFloat = 72
     @State private var editMode = EditMode.inactive
     @State private var dragSession = UUID()
     @State private var insertionTarget: GridInsertionTarget?
@@ -251,13 +251,11 @@ private struct LibraryScreen: View {
             List {
                 ForEach(entries, id: \.element.id) { index, book in
                     HStack(spacing: 10) {
+                        BookCover(book: book, opensBook: !isSorting, onHold: list == .custom ? beginEditing : nil)
+                            .frame(width: listCoverHeight * BookCover.aspectRatio, height: listCoverHeight)
+
                         BookDetails(book: book, progress: store.progress(for: book.id), compact: true)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.leading, coverColumnWidth + 10)
-                            .overlay(alignment: .leading) {
-                                BookCover(book: book, opensBook: !isSorting, onHold: list == .custom ? beginEditing : nil)
-                                    .fixedSize(horizontal: true, vertical: false)
-                            }
 
                         if list == .custom && !isSorting {
                             Menu {
@@ -505,6 +503,8 @@ private struct BookListShareSheet: UIViewControllerRepresentable {
 }
 
 private struct BookCover: View {
+    static let aspectRatio: CGFloat = 0.7
+
     @Environment(\.openURL) private var openURL
     let book: ReadingBook
     var cornerRadius: CGFloat = 5
@@ -540,7 +540,7 @@ private struct BookCover: View {
     private var artwork: some View {
         Rectangle()
             .fill(Color.accentColor.opacity(0.09))
-            .aspectRatio(0.7, contentMode: .fit)
+            .aspectRatio(Self.aspectRatio, contentMode: .fit)
             .overlay {
                 AsyncImage(url: book.coverURL) { image in
                     image.resizable().scaledToFill()
@@ -563,7 +563,8 @@ private struct BookDetails: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(book.title).font(.headline).lineLimit(compact ? 1 : 2)
+            Text(book.title).font(compact ? .caption.weight(.semibold) : .headline)
+                .lineLimit(compact ? 1 : 2)
             if let author = book.author, !author.isEmpty {
                 Text(author).font(compact ? .caption : .subheadline).foregroundStyle(.secondary)
                     .lineLimit(1)

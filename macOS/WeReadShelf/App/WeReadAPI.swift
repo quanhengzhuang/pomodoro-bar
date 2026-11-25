@@ -110,12 +110,13 @@ private struct ProgressResponse: GatewayResponse {
     struct Book: Decodable {
         let progress: Int?
         let readingTime: Int?
+        let recordReadingTime: Int?
         let updateTime: TimeInterval?
         let finishTime: TimeInterval?
 
         var readingProgress: ReadingProgress {
             ReadingProgress(
-                totalReadingSeconds: readingTime.flatMap { $0 > 0 ? $0 : nil },
+                totalReadingSeconds: [readingTime, recordReadingTime].compactMap { $0 }.first { $0 > 0 },
                 progressPercentage: progress.flatMap { (0...100).contains($0) ? $0 : nil },
                 lastReadAt: readingDate(updateTime),
                 finishedAt: progress == 100 ? readingDate(finishTime) : nil
