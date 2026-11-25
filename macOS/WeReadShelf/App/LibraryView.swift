@@ -6,6 +6,7 @@ struct LibraryView: View {
     @AppStorage("customLibraryLayout") private var customLayout = LibraryLayout.list
     @State private var selection: ReadingList? = .recent
     @State private var showsShelfPicker = false
+    @State private var bookToRemove: ReadingBook?
 
     private var activeList: ReadingList { selection ?? .recent }
     private var layout: Binding<LibraryLayout> { activeList == .recent ? $recentLayout : $customLayout }
@@ -52,6 +53,19 @@ struct LibraryView: View {
         }
         .sheet(isPresented: $showsShelfPicker) {
             ShelfPicker(store: store)
+        }
+        .alert(
+            "从「\(ReadingList.custom.title)」移出？",
+            isPresented: Binding(
+                get: { bookToRemove != nil },
+                set: { if !$0 { bookToRemove = nil } }
+            ),
+            presenting: bookToRemove
+        ) { book in
+            Button("取消", role: .cancel) {}
+            Button("移出", role: .destructive) { store.removeFromCustomList(book.id) }
+        } message: { book in
+            Text("《\(book.title)》")
         }
         .onOpenURL { url in
             if let list = ReadingList(openURL: url) {
@@ -119,9 +133,9 @@ struct LibraryView: View {
             let bookWidth: CGFloat = 110
             ScrollView {
                 LazyVGrid(
-                    columns: [GridItem(.adaptive(minimum: bookWidth, maximum: 132), spacing: 16, alignment: .topLeading)],
+                    columns: [GridItem(.adaptive(minimum: bookWidth, maximum: 132), spacing: 20, alignment: .topLeading)],
                     alignment: .leading,
-                    spacing: 18
+                    spacing: 22
                 ) {
                     ForEach(entries, id: \.element.id) { index, book in
                         VStack(alignment: .leading, spacing: 5) {
@@ -162,9 +176,9 @@ struct LibraryView: View {
                 .help("下移")
                 .accessibilityLabel("下移《\(book.title)》")
                 .disabled(index == books.count - 1)
-            Button { store.removeFromCustomList(book.id) } label: { Image(systemName: "minus.circle") }
-                .help("移出自定义书单")
-                .accessibilityLabel("将《\(book.title)》移出自定义书单")
+            Button { bookToRemove = book } label: { Image(systemName: "minus.circle") }
+                .help("移出\(ReadingList.custom.title)")
+                .accessibilityLabel("将《\(book.title)》移出\(ReadingList.custom.title)")
         }
     }
 
@@ -386,43 +400,29 @@ private struct BookMetrics: View {
 private struct ReadingDataButton: View {
     let store: LibraryStore
     let book: ReadingBook
-    @State private var isShowingData = false
 
     var body: some View {
-        Button {
-            isShowingData = true
-            if (store.progress(for: book.id)?.totalReadingSeconds ?? 0) <= 0 { loadProgress() }
-        } label: {
-            Image(systemName: "clock")
-        }
-        .help("查看阅读数据")
-        .accessibilityLabel("查看《\(book.title)》的阅读数据")
-        .popover(isPresented: $isShowingData) {
-            let progress = store.progress(for: book.id)
-            VStack(alignment: .leading, spacing: 8) {
-                Text(book.title).font(.headline)
-                BookMetrics(book: book, progress: progress)
-                if store.isLoadingProgress(for: book.id) {
-                    ProgressView("正在获取阅读数据…").controlSize(.small)
-                } else if let error = store.progressError(for: book.id) {
-                    WarningLabel(message: error)
-                } else if (progress?.totalReadingSeconds ?? 0) <= 0 {
-                    Text("暂无可用时长").foregroundStyle(.secondary)
+        if store.hasAPIKey {
+            let isLoading = store.isLoadingProgress(for: book.id)
+            let error = store.progressError(for: book.id)
+            Button {
+                Task { await store.loadProgress(for: book.id) }
+            } label: {
+                Group {
+                    if isLoading {
+                        ProgressView().controlSize(.mini)
+                    } else {
+                        Image(systemName: error == nil ? "clock" : "exclamationmark.circle")
+                            .foregroundStyle(error == nil ? Color.primary : Color.orange)
+                    }
                 }
-                if store.hasAPIKey {
-                    Button("刷新阅读数据", action: loadProgress)
-                        .disabled(store.isLoadingProgress(for: book.id))
-                } else {
-                    SettingsLink { Text("打开设置") }
-                }
+                .frame(width: 16, height: 16)
             }
-            .padding(14)
-            .frame(width: 238, alignment: .leading)
+            .disabled(isLoading)
+            .help(error ?? "刷新阅读时长")
+            .accessibilityLabel("刷新《\(book.title)》的阅读时长")
+            .accessibilityHint(error ?? "")
+            .accessibilityValue(isLoading ? "正在刷新" : "")
         }
-    }
-
-    private func loadProgress() {
-        guard store.hasAPIKey else { return }
-        Task { await store.loadProgress(for: book.id) }
     }
 }

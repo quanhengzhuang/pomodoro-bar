@@ -24,7 +24,7 @@ enum ReadingList: String, CaseIterable, Identifiable, Sendable {
     var title: String {
         switch self {
         case .recent: "最近阅读"
-        case .custom: "自定义书单"
+        case .custom: "我的书单"
         }
     }
 
