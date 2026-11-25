@@ -2,7 +2,7 @@
 
 ## Development Workflow
 
-- For non-trivial changes, write a task first and wait for user confirmation before coding.
+- For non-trivial changes, write a task first, then proceed with implementation.
 - Store tasks at `docs/tasks/task-{YYYYMMDD}-{HHmm}-{title}.md`, for example `docs/tasks/task-20260101-0930-icon-consistency.md`.
 - Keep tasks minimal and always include: goal, changes, affected files, and estimated code changes.
 - Add extra sections only when data, compatibility, risk, or verification details genuinely matter.

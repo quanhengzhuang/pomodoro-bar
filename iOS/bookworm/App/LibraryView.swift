@@ -1,10 +1,12 @@
+import CoreTransferable
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct LibraryView: View {
     let store: LibraryStore
     @AppStorage("recentLibraryLayout") private var recentLayout = LibraryLayout.list
     @AppStorage("customLibraryLayout") private var customLayout = LibraryLayout.list
-    @State private var selection: ReadingList = .recent
+    @State private var selection: ReadingList = .custom
     @State private var sheet: LibrarySheet?
 
     var body: some View {
@@ -45,6 +47,15 @@ private enum LibraryLayout: String {
     case list, grid
 }
 
+private struct DraggedBook: Codable, Transferable {
+    let id: String
+    let session: UUID
+
+    static var transferRepresentation: some TransferRepresentation {
+        CodableRepresentation(contentType: .data).visibility(.ownProcess)
+    }
+}
+
 private struct LibraryScreen: View {
     let store: LibraryStore
     let list: ReadingList
@@ -53,32 +64,49 @@ private struct LibraryScreen: View {
     let openPicker: () -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .caption) private var coverColumnWidth = 60.0
+    @State private var editMode = EditMode.inactive
+    @State private var dragSession = UUID()
     @State private var bookToRemove: ReadingBook?
+
+    private let gridSpacing: CGFloat = 14
 
     private var books: [ReadingBook] {
         list == .recent ? store.recentBooks : store.customBooks
     }
 
+    private var isSorting: Bool { editMode.isEditing }
+
     var body: some View {
         NavigationStack {
             collection
+                .environment(\.editMode, $editMode)
                 .navigationTitle(list.title)
                 .refreshable { await store.refresh() }
                 .safeAreaInset(edge: .bottom, spacing: 0) { status }
                 .toolbar {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("设置", systemImage: "gearshape", action: openSettings)
+                            .disabled(isSorting)
                     }
                     ToolbarItemGroup(placement: .topBarTrailing) {
-                        if list == .custom {
-                            Button("添加书籍", systemImage: "plus", action: openPicker)
-                                .disabled(store.shelfBooks.isEmpty)
-                        }
-                        Button(
-                            layout == .list ? "切换为格子" : "切换为列表",
-                            systemImage: layout == .list ? "square.grid.2x2" : "list.bullet"
-                        ) {
-                            layout = layout == .list ? .grid : .list
+                        if isSorting {
+                            Button("完成") { editMode = .inactive }
+                        } else {
+                            if list == .custom {
+                                Button("排序") {
+                                    dragSession = UUID()
+                                    editMode = .active
+                                }
+                                .disabled(books.count < 2)
+                                Button("添加书籍", systemImage: "plus", action: openPicker)
+                                    .disabled(store.shelfBooks.isEmpty)
+                            }
+                            Button(
+                                layout == .list ? "切换为格子" : "切换为列表",
+                                systemImage: layout == .list ? "square.grid.2x2" : "list.bullet"
+                            ) {
+                                layout = layout == .list ? .grid : .list
+                            }
                         }
                     }
                 }
@@ -96,10 +124,12 @@ private struct LibraryScreen: View {
                     Text("《\(book.title)》")
                 }
         }
+        .onDisappear { editMode = .inactive }
     }
 
     @ViewBuilder
     private var collection: some View {
+        let books = books
         let entries = Array(books.enumerated())
         if entries.isEmpty {
             ScrollView {
@@ -114,11 +144,11 @@ private struct LibraryScreen: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.leading, coverColumnWidth + 10)
                             .overlay(alignment: .leading) {
-                                BookCover(book: book)
+                                BookCover(book: book, opensBook: !isSorting)
                                     .fixedSize(horizontal: true, vertical: false)
                             }
 
-                        if list == .custom {
+                        if list == .custom && !isSorting {
                             Menu {
                                 bookActions(book, at: index, count: entries.count)
                             } label: {
@@ -135,30 +165,67 @@ private struct LibraryScreen: View {
                     .contextMenu {
                         if list == .recent { bookActions(book, at: index, count: entries.count) }
                     }
+                    .moveDisabled(!isSorting)
                 }
+                .onMove(perform: list == .custom ? { offsets, destination in
+                    moveListBook(at: offsets, toOffset: destination, displayedBooks: books)
+                } : nil)
             }
             .listStyle(.plain)
         } else {
             let columnCount = dynamicTypeSize.isAccessibilitySize ? 1 : 4
-            let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: 10), count: columnCount)
+            let columns = Array(repeating: GridItem(.flexible(minimum: 0), spacing: gridSpacing), count: columnCount)
             ScrollView {
                 LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                     ForEach(entries, id: \.element.id) { index, book in
-                        VStack(alignment: .leading, spacing: 5) {
-                            BookCover(book: book, cornerRadius: 0)
-                            Text(book.title)
-                                .font(.footnote.weight(.medium))
-                                .lineLimit(1)
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(.rect)
-                        .contextMenu { bookActions(book, at: index, count: entries.count) }
+                        gridBook(book, at: index, count: entries.count)
                     }
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, gridSpacing)
                 .padding(.vertical, 12)
             }
         }
+    }
+
+    @ViewBuilder
+    private func gridBook(_ book: ReadingBook, at index: Int, count: Int) -> some View {
+        let tile = VStack(alignment: .leading, spacing: 5) {
+            BookCover(book: book, cornerRadius: 0, opensBook: !isSorting)
+            Text(book.title)
+                .font(.caption.weight(.medium))
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(.rect)
+
+        if isSorting {
+            tile
+                .draggable(DraggedBook(id: book.id, session: dragSession))
+                .dropDestination(for: DraggedBook.self) { items, _ in
+                    guard items.count == 1, let item = items.first, item.session == dragSession else { return false }
+                    return moveBook(item.id, to: book.id)
+                }
+        } else {
+            tile.contextMenu { bookActions(book, at: index, count: count) }
+        }
+    }
+
+    private func moveListBook(at offsets: IndexSet, toOffset destination: Int, displayedBooks: [ReadingBook]) {
+        guard offsets.count == 1, let source = offsets.first, displayedBooks.indices.contains(source) else { return }
+        // List's destination is an insertion point in the original list.
+        let target = destination > source ? destination - 1 : destination
+        guard displayedBooks.indices.contains(target) else { return }
+        moveBook(displayedBooks[source].id, to: displayedBooks[target].id)
+    }
+
+    @discardableResult
+    private func moveBook(_ id: String, to targetID: String) -> Bool {
+        let books = store.customBooks
+        guard isSorting, list == .custom, id != targetID,
+              let source = books.firstIndex(where: { $0.id == id }),
+              let target = books.firstIndex(where: { $0.id == targetID }) else { return false }
+        withAnimation { store.moveCustomBook(id, by: target - source) }
+        return true
     }
 
     @ViewBuilder
@@ -230,9 +297,10 @@ private struct LibraryScreen: View {
 private struct BookCover: View {
     let book: ReadingBook
     var cornerRadius: CGFloat = 5
+    var opensBook = true
 
     var body: some View {
-        if let url = book.destinationURL {
+        if opensBook, let url = book.destinationURL {
             Link(destination: url) { artwork }
                 .buttonStyle(.plain)
                 .accessibilityLabel("打开《\(book.title)》")
