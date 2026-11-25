@@ -256,15 +256,56 @@ final class LibraryStore {
 #if os(iOS)
     private func needsBookMetadata(for bookID: String, at now: Date) -> Bool {
         guard let cached = library.bookMetadata?[bookID] else { return true }
-        return now.timeIntervalSince(cached.fetchedAt) >= 24 * 60 * 60 || now < cached.fetchedAt
+        return now.timeIntervalSince(cached.fetchedAt) >= 24 * 60 * 60 || now < cached.fetchedAt ||
+            (cached.value.wordCount == nil && cached.didCheckChapters != true) ||
+            (cached.value.readingCount == nil && cached.didCheckReadingCount != true)
     }
 
     private func fetchBookMetadata(for bookID: String, credential: APIKeyRecord) async {
         guard let metadata = try? await api.fetchBookMetadata(bookID: bookID, apiKey: credential.key),
               !Task.isCancelled, self.credential?.id == credential.id else { return }
+        let cached = library.bookMetadata?[bookID]?.value
+        var wordCount = metadata.wordCount ?? cached?.wordCount
+        var approximate = metadata.wordCount == nil ? cached?.wordCountIsApproximate : nil
+        var didCheckChapters = true
+        if wordCount == nil {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, self.credential?.id == credential.id else { return }
+            do {
+                wordCount = try await api.fetchChapterWordCount(bookID: bookID, apiKey: credential.key)
+                approximate = wordCount == nil ? nil : true
+            } catch {
+                didCheckChapters = false
+            }
+        }
+
+        var readingCount = metadata.readingCount
+        var didCheckReadingCount = true
+        if readingCount == nil {
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, self.credential?.id == credential.id else { return }
+            let book = library.shelfBooks.first { $0.id == bookID } ?? customBooks.first { $0.id == bookID }
+            if let book, !book.isPrivate, !book.title.isEmpty {
+                do {
+                    readingCount = try await api.fetchReadingCount(bookID: bookID, title: book.title, apiKey: credential.key)
+                } catch {
+                    didCheckReadingCount = false
+                }
+            }
+        }
+
+        guard !Task.isCancelled, self.credential?.id == credential.id else { return }
+        let value = BookMetadata(
+            recommendation: metadata.recommendation ?? cached?.recommendation, wordCount: wordCount,
+            readingCount: readingCount ?? cached?.readingCount, wordCountIsApproximate: approximate,
+            detailURL: metadata.detailURL ?? cached?.detailURL
+        )
         var updated = library
         if updated.bookMetadata == nil { updated.bookMetadata = [:] }
-        updated.bookMetadata?[bookID] = CachedBookMetadata(value: metadata, fetchedAt: .now)
+        updated.bookMetadata?[bookID] = CachedBookMetadata(
+            value: value, fetchedAt: .now, didCheckChapters: didCheckChapters,
+            didCheckReadingCount: didCheckReadingCount
+        )
         saveCache(updated)
         library = updated
     }
@@ -368,6 +409,8 @@ private struct AutomaticBookRequest {
 private struct CachedBookMetadata: Codable {
     let value: BookMetadata
     let fetchedAt: Date
+    let didCheckChapters: Bool?
+    let didCheckReadingCount: Bool?
 }
 
 private struct CachedLibrary: Codable {

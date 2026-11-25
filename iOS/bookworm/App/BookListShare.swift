@@ -180,7 +180,8 @@ enum BookListShareRenderer {
             .paragraphStyle: style
         ]
         let string = text as NSString
-        let separator = string.range(of: "  |  ")
+        let delimiter = "  |  "
+        var separator = string.range(of: delimiter)
         guard stylesMetadataDivider, separator.location != NSNotFound else {
             string.draw(in: rect, withAttributes: attributes)
             return
@@ -188,11 +189,16 @@ enum BookListShareRenderer {
 
         let rendered = NSMutableAttributedString(string: text, attributes: attributes)
         let dividerFont = UIFont.systemFont(ofSize: size * 0.72)
-        rendered.addAttributes([
+        let dividerAttributes: [NSAttributedString.Key: Any] = [
             .font: dividerFont,
             .foregroundColor: metadataDivider,
             .baselineOffset: (font.capHeight - dividerFont.capHeight) / 2
-        ], range: NSRange(location: separator.location + 2, length: 1))
+        ]
+        while separator.location != NSNotFound {
+            rendered.addAttributes(dividerAttributes, range: NSRange(location: separator.location + 2, length: 1))
+            let nextStart = NSMaxRange(separator)
+            separator = string.range(of: delimiter, range: NSRange(location: nextStart, length: string.length - nextStart))
+        }
         rendered.draw(in: rect)
     }
 

@@ -137,6 +137,7 @@ private struct LibraryScreen: View {
     let presentShare: (BookListShareExport) -> Void
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.layoutDirection) private var layoutDirection
+    @ScaledMetric(relativeTo: .largeTitle) private var pageTitleSize: CGFloat = 36
     @ScaledMetric(relativeTo: .caption) private var listCoverHeight: CGFloat = 84
     @State private var editMode = EditMode.inactive
     @State private var dragSession = UUID()
@@ -164,6 +165,13 @@ private struct LibraryScreen: View {
                 .refreshable { await store.refresh() }
                 .safeAreaInset(edge: .bottom, spacing: 0) { status }
                 .toolbar {
+                    if #available(iOS 26.0, *) {
+                        ToolbarItem(placement: .largeTitle) {
+                            Text(list.title)
+                                .font(.system(size: pageTitleSize, weight: .bold))
+                                .accessibilityAddTraits(.isHeader)
+                        }
+                    }
                     ToolbarItem(placement: .topBarLeading) {
                         Button("设置", systemImage: "gearshape", action: openSettings)
                             .disabled(isSorting || shareTask != nil)
@@ -242,8 +250,22 @@ private struct LibraryScreen: View {
         let metadata = store.bookMetadata(for: book.id)
         return BookDetails(
             book: book, progress: store.progress(for: book.id), recommendation: metadata?.recommendation,
-            wordCount: metadata?.wordCount, compact: true
+            readingCount: metadata?.readingCount, wordCount: metadata?.wordCount,
+            approximateWordCount: metadata?.wordCountIsApproximate == true, compact: true
         )
+    }
+
+    @ViewBuilder
+    private func listDetails(for book: ReadingBook) -> some View {
+        let text = details(for: book)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(.rect)
+        if !isSorting, let destination = book.detailURL ?? store.bookMetadata(for: book.id)?.detailURL {
+            Link(destination: destination) { text }
+                .buttonStyle(.plain)
+        } else {
+            text
+        }
     }
 
     @ViewBuilder
@@ -262,8 +284,7 @@ private struct LibraryScreen: View {
                         BookCover(book: book, opensBook: !isSorting, onHold: list == .custom ? beginEditing : nil)
                             .frame(width: listCoverHeight * BookCover.aspectRatio, height: listCoverHeight)
 
-                        details(for: book)
-                            .frame(maxWidth: .infinity, alignment: .leading)
+                        listDetails(for: book)
 
                         if list == .custom && !isSorting {
                             Menu {
@@ -570,7 +591,9 @@ private struct BookDetails: View {
     let book: ReadingBook
     var progress: ReadingProgress?
     var recommendation: Double?
+    var readingCount: Int?
     var wordCount: Int?
+    var approximateWordCount = false
     var compact = false
 
     private static let dateFormat = Date.ISO8601FormatStyle(timeZone: .autoupdatingCurrent)
@@ -589,13 +612,14 @@ private struct BookDetails: View {
                     Text(line.joined(separator: "，"))
                 } else {
                     HStack(spacing: 7) {
-                        Text(line[0])
-                        if let second = line.dropFirst().first {
-                            Rectangle()
-                                .fill(Color.primary.opacity(0.085))
-                                .frame(width: 1, height: 10)
-                                .accessibilityHidden(true)
-                            Text(second)
+                        ForEach(Array(line.enumerated()), id: \.offset) { index, detail in
+                            if index > 0 {
+                                Rectangle()
+                                    .fill(Color.primary.opacity(0.085))
+                                    .frame(width: 1, height: 10)
+                                    .accessibilityHidden(true)
+                            }
+                            Text(detail)
                         }
                     }
                     .lineLimit(1)
@@ -614,8 +638,8 @@ private struct BookDetails: View {
     }
 
     private var metadataLines: [[String]] {
-        let catalog = [recommendationText, wordCountText].compactMap { $0 }
-        let reading = [lastReadText, readingTimeText].compactMap { $0 }
+        let catalog = [recommendationText, readingCountText].compactMap { $0 }
+        let reading = [lastReadText, readingTimeText, wordCountText].compactMap { $0 }
         return [catalog, reading].filter { !$0.isEmpty }
     }
 
@@ -627,9 +651,15 @@ private struct BookDetails: View {
 
     private var wordCountText: String? {
         guard let wordCount else { return nil }
-        if wordCount < 10_000 { return "\(wordCount.formatted()) 字" }
+        let prefix = approximateWordCount ? "约 " : ""
+        if wordCount < 10_000 { return "\(prefix)\(wordCount.formatted()) 字" }
         let tenThousands = (Double(wordCount) / 10_000).formatted(.number.precision(.fractionLength(0...1)))
-        return "\(tenThousands) 万字"
+        return "\(prefix)\(tenThousands) 万字"
+    }
+
+    private var readingCountText: String? {
+        guard let readingCount else { return nil }
+        return "阅读 \(readingCount.formatted()) 人"
     }
 
     private var lastReadText: String? {
@@ -639,7 +669,7 @@ private struct BookDetails: View {
 
     private var readingTimeText: String? {
         guard let seconds = progress?.totalReadingSeconds, seconds > 0 else { return nil }
-        return "累计 \(Self.duration(seconds))"
+        return Self.duration(seconds)
     }
 
     private static func duration(_ seconds: Int) -> String {

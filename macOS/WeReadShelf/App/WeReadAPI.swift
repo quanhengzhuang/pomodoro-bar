@@ -10,6 +10,20 @@ struct ReadingProgress: Codable, Equatable, Sendable {
 struct BookMetadata: Codable, Sendable {
     let recommendation: Double?
     let wordCount: Int?
+    let readingCount: Int?
+    let wordCountIsApproximate: Bool?
+    let detailURL: URL?
+
+    init(
+        recommendation: Double?, wordCount: Int?, readingCount: Int? = nil,
+        wordCountIsApproximate: Bool? = nil, detailURL: URL? = nil
+    ) {
+        self.recommendation = recommendation
+        self.wordCount = wordCount
+        self.readingCount = readingCount
+        self.wordCountIsApproximate = wordCountIsApproximate
+        self.detailURL = detailURL
+    }
 }
 
 struct WeReadAPI {
@@ -73,8 +87,30 @@ struct WeReadAPI {
         return response.metadata
     }
 
+    func fetchChapterWordCount(bookID: String, apiKey: String) async throws -> Int? {
+        let response: ChapterInfoResponse = try await request(
+            "/book/chapterinfo", parameters: ["bookId": bookID], apiKey: apiKey
+        )
+        guard response.bookId == nil || response.bookId == bookID else { throw Failure.unexpectedResponse }
+        return response.totalWordCount
+    }
+
+    func fetchReadingCount(bookID: String, title: String, apiKey: String) async throws -> Int? {
+        let response: BookSearchResponse = try await request(
+            "/store/search",
+            parameters: ["keyword": title, "scope": 10, "context": "查询书虫列表中同一版本书籍的在读人数"],
+            apiKey: apiKey
+        )
+        for group in response.results ?? [] {
+            for book in group.books ?? [] where book.bookInfo?.bookId == bookID {
+                if let count = book.readingCount, count > 0 { return count }
+            }
+        }
+        return nil
+    }
+
     private func request<Response: GatewayResponse>(
-        _ endpoint: String, parameters: [String: String] = [:], apiKey: String
+        _ endpoint: String, parameters: [String: Any] = [:], apiKey: String
     ) async throws -> Response {
         var request = URLRequest(url: Self.gateway, timeoutInterval: 20)
         request.httpMethod = "POST"
@@ -83,7 +119,7 @@ struct WeReadAPI {
         var body = parameters
         body["api_name"] = endpoint
         body["skill_version"] = "1.0.6"
-        request.httpBody = try JSONEncoder().encode(body)
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw Failure.unexpectedResponse }
@@ -121,7 +157,7 @@ private struct BookInfoResponse: GatewayResponse {
     let metadata: BookMetadata
 
     private enum CodingKeys: String, CodingKey {
-        case errcode, bookId, newRating, newRatingCount, wordCount
+        case errcode, bookId, newRating, newRatingCount, wordCount, readingCount, deepLink
     }
 
     init(from decoder: any Decoder) throws {
@@ -129,11 +165,12 @@ private struct BookInfoResponse: GatewayResponse {
         errcode = try fields.decodeIfPresent(Int.self, forKey: .errcode)
         bookId = try fields.decodeIfPresent(String.self, forKey: .bookId)
         let ratingCount = try? fields.decode(Int.self, forKey: .newRatingCount)
-        let wordCount = try? fields.decode(Int.self, forKey: .wordCount)
         let rating = try? fields.decode(Double.self, forKey: .newRating)
         metadata = BookMetadata(
             recommendation: ratingCount == 0 ? nil : rating.flatMap(Self.recommendationPercent),
-            wordCount: wordCount.flatMap { $0 > 0 ? $0 : nil }
+            wordCount: fields.losslessInteger(forKey: .wordCount).flatMap { $0 > 0 ? $0 : nil },
+            readingCount: fields.losslessInteger(forKey: .readingCount).flatMap { $0 > 0 ? $0 : nil },
+            detailURL: validatedReadingURL(try? fields.decode(String.self, forKey: .deepLink))
         )
     }
 
@@ -141,6 +178,76 @@ private struct BookInfoResponse: GatewayResponse {
         // Older gateway responses encode the percentage in tenths (WeChatReading issue #8).
         guard (0...1_000).contains(rating) else { return nil }
         return rating > 100 ? rating / 10 : rating
+    }
+}
+
+private struct ChapterInfoResponse: GatewayResponse {
+    let errcode: Int?
+    let bookId: String?
+    let chapters: [Chapter]?
+
+    struct Chapter: Decodable {
+        let chapterUid: Int?
+        let wordCount: Int?
+
+        private enum CodingKeys: String, CodingKey { case chapterUid, wordCount }
+
+        init(from decoder: any Decoder) throws {
+            let fields = try decoder.container(keyedBy: CodingKeys.self)
+            chapterUid = fields.losslessInteger(forKey: .chapterUid)
+            wordCount = fields.losslessInteger(forKey: .wordCount)
+        }
+    }
+
+    var totalWordCount: Int? {
+        guard let chapters else { return nil }
+        var chapterCounts: [Int: Int] = [:]
+        var total = 0
+        for chapter in chapters {
+            guard let id = chapter.chapterUid, id >= 0,
+                  let count = chapter.wordCount, count >= 0 else { return nil }
+            if let previousCount = chapterCounts.updateValue(count, forKey: id) {
+                guard previousCount == count else { return nil }
+                continue
+            }
+            let (sum, overflow) = total.addingReportingOverflow(count)
+            guard !overflow else { return nil }
+            total = sum
+        }
+        return total > 0 ? total : nil
+    }
+}
+
+private struct BookSearchResponse: GatewayResponse {
+    let errcode: Int?
+    let results: [Group]?
+
+    struct Group: Decodable {
+        let books: [Book]?
+    }
+
+    struct Book: Decodable {
+        let bookInfo: Info?
+        let readingCount: Int?
+
+        struct Info: Decodable {
+            let bookId: String?
+        }
+
+        private enum CodingKeys: String, CodingKey { case bookInfo, readingCount }
+
+        init(from decoder: any Decoder) throws {
+            let fields = try decoder.container(keyedBy: CodingKeys.self)
+            bookInfo = try? fields.decode(Info.self, forKey: .bookInfo)
+            readingCount = fields.losslessInteger(forKey: .readingCount)
+        }
+    }
+}
+
+private extension KeyedDecodingContainer {
+    func losslessInteger(forKey key: Key) -> Int? {
+        if let value = try? decode(Int.self, forKey: key) { return value }
+        return (try? decode(String.self, forKey: key)).flatMap { Int($0) }
     }
 }
 
@@ -187,8 +294,8 @@ private struct ShelfBook: Decodable {
             title: title,
             author: author,
             coverURL: coverURL,
-            readerURL: validatedURL(readerLink, schemes: ["https", "weread"]),
-            detailURL: validatedURL(deepLink, schemes: ["https", "weread"]),
+            readerURL: validatedReadingURL(readerLink),
+            detailURL: validatedReadingURL(deepLink),
             lastReadAt: readUpdateTime.flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil },
             isPrivate: secret == 1
         )
@@ -210,9 +317,10 @@ private struct ShelfBook: Decodable {
         return components.url
     }
 
-    private func validatedURL(_ value: String?, schemes: Set<String>) -> URL? {
-        guard let value, let url = URL(string: value), let scheme = url.scheme?.lowercased(),
-              schemes.contains(scheme), scheme == "weread" || url.host?.isEmpty == false else { return nil }
-        return url
-    }
+}
+
+private func validatedReadingURL(_ value: String?) -> URL? {
+    guard let value, let url = URL(string: value), let scheme = url.scheme?.lowercased(),
+          scheme == "weread" || (scheme == "https" && url.host?.isEmpty == false) else { return nil }
+    return url
 }
