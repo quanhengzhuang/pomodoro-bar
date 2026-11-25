@@ -125,6 +125,7 @@ struct LibraryView: View {
                     ForEach(entries, id: \.element.id) { index, book in
                         VStack(alignment: .leading, spacing: 6) {
                             BookCover(book: book)
+                                .frame(width: 60)
                             BookHeading(book: book, reservesTitleSpace: true)
                             BookMetrics(book: book, progress: store.progress(for: book.id))
                             HStack(spacing: 10) { bookActions(for: book, at: index) }
@@ -287,7 +288,7 @@ private struct BookRow<Actions: View>: View {
     var body: some View {
         HStack(spacing: 12) {
             BookCover(book: book)
-                .frame(width: 40)
+                .frame(width: 18)
 
             VStack(alignment: .leading, spacing: 3) {
                 BookHeading(book: book)
@@ -365,14 +366,8 @@ private struct BookMetrics: View {
             if let seconds = progress?.elapsedSeconds {
                 Text("累计 \(duration(seconds))")
             }
-            if let percent = progress?.progressPercentage {
-                Text("进度 \(percent)%")
-            }
             if let date = [progress?.lastReadAt, book.lastReadAt].compactMap({ $0 }).max() {
                 Text("最近阅读 \(date.formatted(Self.readingDateFormat))")
-            }
-            if let date = progress?.finishedAt {
-                Text("读完 \(date.formatted(Self.readingDateFormat))")
             }
         }
         .font(.caption.monospacedDigit())
@@ -397,7 +392,7 @@ private struct ReadingDataButton: View {
             isShowingData = true
             if store.progress(for: book.id) == nil { loadProgress() }
         } label: {
-            Image(systemName: "chart.bar")
+            Image(systemName: "clock")
         }
         .help("查看阅读数据")
         .accessibilityLabel("查看《\(book.title)》的阅读数据")
@@ -410,8 +405,8 @@ private struct ReadingDataButton: View {
                     ProgressView("正在获取阅读数据…").controlSize(.small)
                 } else if let error = store.progressError(for: book.id) {
                     WarningLabel(message: error)
-                } else if store.hasAPIKey && progress?.elapsedSeconds == nil && progress?.progressPercentage == nil {
-                    Text("暂无累计时长和进度").foregroundStyle(.secondary)
+                } else if store.hasAPIKey && progress?.elapsedSeconds == nil {
+                    Text("暂无累计阅读时长").foregroundStyle(.secondary)
                 }
                 if store.hasAPIKey {
                     Button("刷新阅读数据", action: loadProgress)

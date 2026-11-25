@@ -143,12 +143,28 @@ private struct ShelfBook: Decodable {
             id: bookId,
             title: title,
             author: author,
-            coverURL: validatedURL(cover, schemes: ["https"]),
+            coverURL: coverURL,
             readerURL: validatedURL(readerLink, schemes: ["https", "weread"]),
             detailURL: validatedURL(deepLink, schemes: ["https", "weread"]),
             lastReadAt: readUpdateTime.flatMap { $0 > 0 ? Date(timeIntervalSince1970: $0) : nil },
             isPrivate: secret == 1
         )
+    }
+
+    private var coverURL: URL? {
+        guard let cover, var components = URLComponents(string: cover),
+              components.host?.isEmpty == false else { return nil }
+
+        switch components.scheme?.lowercased() {
+        case nil, "http":
+            components.scheme = "https"
+            if components.port == 80 { components.port = nil }
+        case "https":
+            break
+        default:
+            return nil
+        }
+        return components.url
     }
 
     private func validatedURL(_ value: String?, schemes: Set<String>) -> URL? {
