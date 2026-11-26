@@ -23,23 +23,17 @@ struct ReadingBook: Codable, Equatable, Identifiable, Sendable {
 
     var destinationURL: URL? { readerURL ?? detailURL }
 
-    private static let gridTitleSeparators = CharacterSet(charactersIn: "，。！？、；：（［【〔—–…·｜／,!?;:([{|")
+    private static let gridTitleSeparators = CharacterSet(charactersIn: "：（［【〔｛〖〘〚:([{")
     private static let titleWrappers = CharacterSet(charactersIn: "《》〈〉「」『』“”\"")
         .union(.whitespacesAndNewlines)
 
     var gridDisplayTitle: String {
-        guard let start = title.firstIndex(where: { !$0.isWhitespace && !$0.isPunctuation }) else {
+        guard let start = title.firstIndex(where: { !$0.isWhitespace && !$0.isPunctuation }),
+              let boundary = title[start...].rangeOfCharacter(from: Self.gridTitleSeparators) else {
             return title
         }
-        let content = title[start...]
-        let boundary = [
-            content.rangeOfCharacter(from: Self.gridTitleSeparators)?.lowerBound,
-            content.range(of: ". ")?.lowerBound,
-            content.range(of: " - ")?.lowerBound
-        ].compactMap { $0 }.min()
-        guard let boundary else { return title }
 
-        let shortTitle = title[..<boundary].trimmingCharacters(in: Self.titleWrappers)
+        let shortTitle = title[..<boundary.lowerBound].trimmingCharacters(in: Self.titleWrappers)
         return shortTitle.isEmpty ? title : shortTitle
     }
 }
