@@ -336,9 +336,11 @@ private struct LibraryScreen: View {
     private func gridBook(_ book: ReadingBook, at index: Int, count: Int) -> some View {
         let tile = VStack(alignment: .leading, spacing: 5) {
             BookCover(book: book, cornerRadius: 0, opensBook: !isSorting, onHold: list == .custom ? beginEditing : nil)
-            Text(book.title)
+            Text(book.gridDisplayTitle)
                 .font(.caption2.weight(.medium))
                 .lineLimit(1)
+                .frame(maxWidth: .infinity)
+                .accessibilityLabel(book.title)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(.rect)

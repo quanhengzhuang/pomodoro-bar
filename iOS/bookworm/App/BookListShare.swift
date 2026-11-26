@@ -136,9 +136,9 @@ enum BookListShareRenderer {
                             let x = sideMargin + CGFloat(column) * (gridCoverWidth + columnGap)
                             let cover = CGRect(x: x, y: y, width: gridCoverWidth, height: gridCoverHeight)
                             drawCover(item.book.coverURL.flatMap { covers[$0] }, in: cover, context: context.cgContext)
-                            drawText(item.book.title,
+                            drawText(item.book.gridDisplayTitle,
                                      in: CGRect(x: x, y: cover.maxY + 12, width: cover.width, height: 38),
-                                     size: 26, weight: .medium, color: ink)
+                                     size: 26, weight: .medium, color: ink, alignment: .center)
                         }
                     case .list:
                         let item = items[row.lowerBound]
@@ -168,11 +168,11 @@ enum BookListShareRenderer {
 
     private static func drawText(
         _ text: String, in rect: CGRect, size: CGFloat, weight: UIFont.Weight = .regular,
-        color: UIColor, stylesMetadataDivider: Bool = false
+        color: UIColor, alignment: NSTextAlignment = .left, stylesMetadataDivider: Bool = false
     ) {
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byTruncatingTail
-        style.alignment = .left
+        style.alignment = alignment
         let font = UIFont.systemFont(ofSize: size, weight: weight)
         let attributes: [NSAttributedString.Key: Any] = [
             .font: font,

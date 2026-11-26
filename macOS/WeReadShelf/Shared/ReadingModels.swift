@@ -22,6 +22,26 @@ struct ReadingBook: Codable, Equatable, Identifiable, Sendable {
     let isPrivate: Bool
 
     var destinationURL: URL? { readerURL ?? detailURL }
+
+    private static let gridTitleSeparators = CharacterSet(charactersIn: "，。！？、；：（［【〔—–…·｜／,!?;:([{|")
+    private static let titleWrappers = CharacterSet(charactersIn: "《》〈〉「」『』“”\"")
+        .union(.whitespacesAndNewlines)
+
+    var gridDisplayTitle: String {
+        guard let start = title.firstIndex(where: { !$0.isWhitespace && !$0.isPunctuation }) else {
+            return title
+        }
+        let content = title[start...]
+        let boundary = [
+            content.rangeOfCharacter(from: Self.gridTitleSeparators)?.lowerBound,
+            content.range(of: ". ")?.lowerBound,
+            content.range(of: " - ")?.lowerBound
+        ].compactMap { $0 }.min()
+        guard let boundary else { return title }
+
+        let shortTitle = title[..<boundary].trimmingCharacters(in: Self.titleWrappers)
+        return shortTitle.isEmpty ? title : shortTitle
+    }
 }
 
 enum ReadingList: String, CaseIterable, Identifiable, Sendable {
