@@ -10,17 +10,17 @@ struct ReadingProgress: Codable, Equatable, Sendable {
 struct BookMetadata: Codable, Sendable {
     let recommendation: Double?
     let wordCount: Int?
-    let readingCount: Int?
+    let publicReaderCount: Int?
     let wordCountIsApproximate: Bool?
     let detailURL: URL?
 
     init(
-        recommendation: Double?, wordCount: Int?, readingCount: Int? = nil,
+        recommendation: Double?, wordCount: Int?, publicReaderCount: Int? = nil,
         wordCountIsApproximate: Bool? = nil, detailURL: URL? = nil
     ) {
         self.recommendation = recommendation
         self.wordCount = wordCount
-        self.readingCount = readingCount
+        self.publicReaderCount = publicReaderCount
         self.wordCountIsApproximate = wordCountIsApproximate
         self.detailURL = detailURL
     }
@@ -30,6 +30,11 @@ struct WeReadAPI {
     struct Shelf {
         let books: [ReadingBook]
         let hasSkillUpgrade: Bool
+    }
+
+    struct PublicBookMetadata: Sendable {
+        let readerCount: Int?
+        let wordCount: Int?
     }
 
     enum Failure: LocalizedError {
@@ -50,10 +55,22 @@ struct WeReadAPI {
     }
 
     private static let gateway = URL(string: "https://i.weread.qq.com/api/agent/gateway")!
+    private static let maximumPublicPageBytes = 2 * 1_024 * 1_024
+    private static let anonymousSession: URLSession = {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpShouldSetCookies = false
+        configuration.httpCookieStorage = nil
+        configuration.urlCredentialStorage = nil
+        configuration.urlCache = nil
+        configuration.timeoutIntervalForResource = 8
+        return URLSession(configuration: configuration, delegate: PublicBookPageRedirects(), delegateQueue: nil)
+    }()
     private let session: URLSession
+    private let publicSession: URLSession
 
-    init(session: URLSession = URLSession(configuration: .ephemeral)) {
+    init(session: URLSession = URLSession(configuration: .ephemeral), publicSession: URLSession? = nil) {
         self.session = session
+        self.publicSession = publicSession ?? Self.anonymousSession
     }
 
     func fetchShelf(apiKey: String) async throws -> Shelf {
@@ -95,22 +112,27 @@ struct WeReadAPI {
         return response.totalWordCount
     }
 
-    func fetchReadingCount(bookID: String, title: String, apiKey: String) async throws -> Int? {
-        let response: BookSearchResponse = try await request(
-            "/store/search",
-            parameters: ["keyword": title, "scope": 10, "context": "查询书虫列表中同一版本书籍的在读人数"],
-            apiKey: apiKey
-        )
-        for group in response.results ?? [] {
-            for book in group.books ?? [] where book.bookInfo?.bookId == bookID {
-                if let count = book.readingCount, count > 0 { return count }
-            }
+    func fetchPublicBookMetadata(bookID: String, links: [URL?]) async throws -> PublicBookMetadata? {
+        guard let url = links.lazy.compactMap({ PublicBookPage.canonicalURL(from: $0) }).first else { return nil }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 6)
+        request.httpShouldHandleCookies = false
+        let (bytes, response) = try await publicSession.bytes(for: request)
+        defer { bytes.task.cancel() }
+        guard let response = response as? HTTPURLResponse, response.url == url else { throw Failure.unexpectedResponse }
+        if response.statusCode == 404 || response.statusCode == 410 { return nil }
+        guard (200..<300).contains(response.statusCode) else { throw Failure.gateway(response.statusCode) }
+        guard response.expectedContentLength <= Int64(Self.maximumPublicPageBytes) else { return nil }
+
+        var data = Data()
+        for try await byte in bytes {
+            guard data.count < Self.maximumPublicPageBytes else { return nil }
+            data.append(byte)
         }
-        return nil
+        return PublicBookPage.metadata(in: data, bookID: bookID)
     }
 
     private func request<Response: GatewayResponse>(
-        _ endpoint: String, parameters: [String: Any] = [:], apiKey: String
+        _ endpoint: String, parameters: [String: String] = [:], apiKey: String
     ) async throws -> Response {
         var request = URLRequest(url: Self.gateway, timeoutInterval: 20)
         request.httpMethod = "POST"
@@ -119,7 +141,7 @@ struct WeReadAPI {
         var body = parameters
         body["api_name"] = endpoint
         body["skill_version"] = "1.0.6"
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        request.httpBody = try JSONEncoder().encode(body)
 
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else { throw Failure.unexpectedResponse }
@@ -157,7 +179,7 @@ private struct BookInfoResponse: GatewayResponse {
     let metadata: BookMetadata
 
     private enum CodingKeys: String, CodingKey {
-        case errcode, bookId, newRating, newRatingCount, wordCount, readingCount, deepLink
+        case errcode, bookId, newRating, newRatingCount, wordCount, deepLink
     }
 
     init(from decoder: any Decoder) throws {
@@ -169,7 +191,6 @@ private struct BookInfoResponse: GatewayResponse {
         metadata = BookMetadata(
             recommendation: ratingCount == 0 ? nil : rating.flatMap(Self.recommendationPercent),
             wordCount: fields.losslessInteger(forKey: .wordCount).flatMap { $0 > 0 ? $0 : nil },
-            readingCount: fields.losslessInteger(forKey: .readingCount).flatMap { $0 > 0 ? $0 : nil },
             detailURL: validatedReadingURL(try? fields.decode(String.self, forKey: .deepLink))
         )
     }
@@ -218,28 +239,97 @@ private struct ChapterInfoResponse: GatewayResponse {
     }
 }
 
-private struct BookSearchResponse: GatewayResponse {
-    let errcode: Int?
-    let results: [Group]?
-
-    struct Group: Decodable {
-        let books: [Book]?
+private final class PublicBookPageRedirects: NSObject, URLSessionTaskDelegate {
+    func urlSession(
+        _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest, completionHandler: @escaping (URLRequest?) -> Void
+    ) {
+        completionHandler(nil)
     }
+}
 
-    struct Book: Decodable {
-        let bookInfo: Info?
-        let readingCount: Int?
+private enum PublicBookPage {
+    private static let host = "weread.qq.com"
 
-        struct Info: Decodable {
-            let bookId: String?
+    static func canonicalURL(from url: URL?) -> URL? {
+        guard let url, let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              components.scheme?.lowercased() == "https", components.host?.lowercased() == host,
+              components.port == nil || components.port == 443,
+              components.user == nil, components.password == nil else { return nil }
+
+        let token: String?
+        let path = components.path.split(separator: "/", omittingEmptySubsequences: false)
+        if path.count == 4, path[0].isEmpty, path[1] == "web", path[2] == "reader" || path[2] == "bookDetail" {
+            token = String(path[3])
+        } else if components.path == "/book-detail" {
+            let matches = components.queryItems?.filter { $0.name == "v" }
+            token = matches?.count == 1 ? matches?.first?.value : nil
+        } else {
+            token = nil
         }
 
-        private enum CodingKeys: String, CodingKey { case bookInfo, readingCount }
+        guard let token, (8...200).contains(token.utf8.count), token.utf8.allSatisfy({ byte in
+            (48...57).contains(byte) || (65...90).contains(byte) || (97...122).contains(byte) || byte == 45 || byte == 95
+        }) else { return nil }
+        return URL(string: "https://\(host)/web/bookDetail/\(token)")
+    }
 
-        init(from decoder: any Decoder) throws {
-            let fields = try decoder.container(keyedBy: CodingKeys.self)
-            bookInfo = try? fields.decode(Info.self, forKey: .bookInfo)
-            readingCount = fields.losslessInteger(forKey: .readingCount)
+    static func metadata(in data: Data, bookID: String) -> WeReadAPI.PublicBookMetadata? {
+        guard let html = String(data: data, encoding: .utf8),
+              let assignment = html.range(
+                  of: #"<script(?:\s+[^>]*)?>\s*window\.__INITIAL_STATE__\s*=\s*"#, options: .regularExpression
+              ),
+              let json = firstJSONObject(in: html[assignment.upperBound...]),
+              let reader = try? JSONDecoder().decode(PageState.self, from: Data(json.utf8)).reader,
+              reader.bookInfo.bookId == bookID else { return nil }
+        return WeReadAPI.PublicBookMetadata(
+            readerCount: reader.readingStat?.readingCount.flatMap { $0 > 0 ? $0 : nil },
+            wordCount: reader.bookInfo.totalWords.flatMap { $0 > 0 ? $0 : nil }
+        )
+    }
+
+    private static func firstJSONObject(in text: Substring) -> Substring? {
+        guard text.utf8.first == 123 else { return nil }
+        var depth = 0
+        var inString = false
+        var escaped = false
+        for index in text.utf8.indices {
+            let byte = text.utf8[index]
+            if inString {
+                if escaped {
+                    escaped = false
+                } else if byte == 92 {
+                    escaped = true
+                } else if byte == 34 {
+                    inString = false
+                }
+            } else if byte == 34 {
+                inString = true
+            } else if byte == 123 {
+                depth += 1
+            } else if byte == 125 {
+                depth -= 1
+                if depth == 0 { return text[...index] }
+            }
+        }
+        return nil
+    }
+
+    private struct PageState: Decodable {
+        let reader: Reader
+
+        struct Reader: Decodable {
+            let bookInfo: BookInfo
+            let readingStat: ReadingStat?
+
+            struct BookInfo: Decodable {
+                let bookId: String
+                let totalWords: Int?
+            }
+
+            struct ReadingStat: Decodable {
+                let readingCount: Int?
+            }
         }
     }
 }

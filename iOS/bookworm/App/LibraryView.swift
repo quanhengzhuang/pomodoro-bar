@@ -251,8 +251,7 @@ private struct LibraryScreen: View {
         let metadata = store.bookMetadata(for: book.id)
         return BookDetails(
             book: book, progress: store.progress(for: book.id), recommendation: metadata?.recommendation,
-            readingCount: metadata?.readingCount, wordCount: metadata?.wordCount,
-            approximateWordCount: metadata?.wordCountIsApproximate == true, compact: true
+            readingCount: metadata?.publicReaderCount, wordCount: metadata?.wordCount, compact: true
         )
     }
 
@@ -596,7 +595,6 @@ private struct BookDetails: View {
     var recommendation: Double?
     var readingCount: Int?
     var wordCount: Int?
-    var approximateWordCount = false
     var compact = false
 
     private static let dateFormat = Date.ISO8601FormatStyle(timeZone: .autoupdatingCurrent)
@@ -608,14 +606,13 @@ private struct BookDetails: View {
                 .tracking(compact ? 0.35 : 0)
                 .font(compact ? .footnote.weight(.semibold) : .headline)
                 .lineLimit(compact ? 1 : 2)
-            if let author = book.author, !author.isEmpty {
+            if !compact, let author = book.author, !author.isEmpty {
                 Text(author)
-                    .tracking(compact ? 0.25 : 0)
-                    .font(compact ? .caption : .subheadline)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
-            ForEach(metadataLines, id: \.self) { line in
+            ForEach(compact ? metadataLines : [], id: \.self) { line in
                 if dynamicTypeSize.isAccessibilitySize {
                     Text(line.joined(separator: "，"))
                         .tracking(compact ? 0.15 : 0)
@@ -643,14 +640,17 @@ private struct BookDetails: View {
     }
 
     var shareDetails: [String] {
-        [book.author].compactMap { $0 }.filter { !$0.isEmpty } +
-            metadataLines.map { $0.joined(separator: "  |  ") }
+        metadataLines.map { $0.joined(separator: "  |  ") }
     }
 
     private var metadataLines: [[String]] {
-        let catalog = [recommendationText, readingCountText].compactMap { $0 }
-        let reading = [lastReadText, readingTimeText, wordCountText].compactMap { $0 }
-        return [catalog, reading].filter { !$0.isEmpty }
+        [
+            [book.author, wordCountText],
+            [recommendationText, readingCountText],
+            [readingTimeText, lastReadText]
+        ]
+        .map { $0.compactMap { $0 }.filter { !$0.isEmpty } }
+        .filter { !$0.isEmpty }
     }
 
     private var recommendationText: String? {
@@ -661,15 +661,14 @@ private struct BookDetails: View {
 
     private var wordCountText: String? {
         guard let wordCount else { return nil }
-        let prefix = approximateWordCount ? "约 " : ""
-        if wordCount < 10_000 { return "\(prefix)\(wordCount.formatted()) 字" }
+        if wordCount < 10_000 { return "约 \(wordCount.formatted()) 字" }
         let tenThousands = (Double(wordCount) / 10_000).formatted(.number.precision(.fractionLength(0...1)))
-        return "\(prefix)\(tenThousands) 万字"
+        return "约 \(tenThousands) 万字"
     }
 
     private var readingCountText: String? {
         guard let readingCount else { return nil }
-        return "阅读 \(readingCount.formatted()) 人"
+        return "\(readingCount.formatted()) 人阅读"
     }
 
     private var lastReadText: String? {
@@ -679,14 +678,15 @@ private struct BookDetails: View {
 
     private var readingTimeText: String? {
         guard let seconds = progress?.totalReadingSeconds, seconds > 0 else { return nil }
-        return Self.duration(seconds)
+        return "已读 \(Self.duration(seconds))"
     }
 
     private static func duration(_ seconds: Int) -> String {
         let minutes = seconds / 60
         if minutes == 0 { return "\(seconds) 秒" }
         if minutes < 60 { return "\(minutes) 分钟" }
-        return "\(minutes / 60) 小时 \(minutes % 60) 分钟"
+        let hours = (Double(seconds) / 3_600).formatted(.number.precision(.fractionLength(0...1)))
+        return "\(hours) 小时"
     }
 }
 

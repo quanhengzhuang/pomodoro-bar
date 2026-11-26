@@ -42,6 +42,7 @@ enum BookListShareRenderer {
     private static let ink = UIColor(red: 0.09, green: 0.13, blue: 0.19, alpha: 1)
     private static let secondary = UIColor(red: 0.33, green: 0.38, blue: 0.45, alpha: 1)
     private static let metadataDivider = UIColor(white: 224.0 / 255, alpha: 1)
+    private static let metadataDelimiter = "  |  "
     private static let border = UIColor(red: 0.89, green: 0.91, blue: 0.94, alpha: 1)
     private static let placeholder = UIColor(red: 0.91, green: 0.95, blue: 0.99, alpha: 1)
     private static let accent = UIColor(red: 0.20, green: 0.37, blue: 0.58, alpha: 1)
@@ -149,11 +150,15 @@ enum BookListShareRenderer {
                         let textTop = y + (rowHeight - 46 - CGFloat(item.details.count) * 33) / 2
                         drawText(item.book.title, in: CGRect(x: x, y: textTop, width: textWidth, height: 46),
                                  size: 33, weight: .semibold, color: ink)
+                        let author = item.book.author ?? ""
                         for (line, detail) in item.details.enumerated() {
-                            let isAuthor = line == 0 && detail == item.book.author
+                            let startsWithAuthor = line == 0 &&
+                                (detail.utf16.elementsEqual(author.utf16) ||
+                                 detail.utf16.starts(with: (author + metadataDelimiter).utf16))
                             drawText(detail,
                                      in: CGRect(x: x, y: textTop + 46 + CGFloat(line) * 33, width: textWidth, height: 33),
-                                     size: 25, color: secondary, stylesMetadataDivider: !isAuthor)
+                                     size: 25, color: secondary,
+                                     dividerSearchStart: startsWithAuthor ? author.utf16.count : 0)
                         }
                         border.setFill()
                         context.fill(CGRect(x: x, y: y + rowHeight - 1, width: textWidth, height: 1))
@@ -168,7 +173,7 @@ enum BookListShareRenderer {
 
     private static func drawText(
         _ text: String, in rect: CGRect, size: CGFloat, weight: UIFont.Weight = .regular,
-        color: UIColor, alignment: NSTextAlignment = .left, stylesMetadataDivider: Bool = false
+        color: UIColor, alignment: NSTextAlignment = .left, dividerSearchStart: Int? = nil
     ) {
         let style = NSMutableParagraphStyle()
         style.lineBreakMode = .byTruncatingTail
@@ -180,9 +185,10 @@ enum BookListShareRenderer {
             .paragraphStyle: style
         ]
         let string = text as NSString
-        let delimiter = "  |  "
-        var separator = string.range(of: delimiter)
-        guard stylesMetadataDivider, separator.location != NSNotFound else {
+        let searchStart = dividerSearchStart ?? string.length
+        let searchRange = NSRange(location: searchStart, length: string.length - searchStart)
+        var separator = string.range(of: metadataDelimiter, range: searchRange)
+        guard separator.location != NSNotFound else {
             string.draw(in: rect, withAttributes: attributes)
             return
         }
@@ -197,7 +203,9 @@ enum BookListShareRenderer {
         while separator.location != NSNotFound {
             rendered.addAttributes(dividerAttributes, range: NSRange(location: separator.location + 2, length: 1))
             let nextStart = NSMaxRange(separator)
-            separator = string.range(of: delimiter, range: NSRange(location: nextStart, length: string.length - nextStart))
+            separator = string.range(
+                of: metadataDelimiter, range: NSRange(location: nextStart, length: string.length - nextStart)
+            )
         }
         rendered.draw(in: rect)
     }
